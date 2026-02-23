@@ -3,7 +3,7 @@ local SCRIPT_VERSION = {
     --Semantic Versioning
     Major = 1;
     Minor = 1;
-    Patch = 0;
+    Patch = 1;
 }
 
 local genv = getgenv()
@@ -187,7 +187,7 @@ genv.Config = {
         ["airRollEnabled"] = false;
         ["airPitchEnabled"] = false;
         ["powerSlideEnabled"] = false;
-    })
+    });
     ["airRollLeftKeybind"] = Iris.State("Q");
     ["airRollRightKeybind"] = Iris.State("E");
     ["airPitchUpKeybind"] = Iris.State("R");
@@ -1317,13 +1317,6 @@ Iris:Connect(function()
                         Config.rocketLeagueControls:set(rocketLeagueControls)
                         rocketLeagueControlsChanged(rocketLeagueControls)
                     end
-                end
-
-                local airRollEnabled = Iris.Checkbox({"Air Roll Enabled"}, { isChecked = Config.airRollEnabled })
-                if airRollEnabled.checked() or airRollEnabled.unchecked() then
-                    local newEnabled = airRollEnabled.state.isChecked:get()
-                    Config.airRollEnabled:set(newEnabled)
-                    airRollEnabled(newEnabled)
                 end
 
                 local airRollStength = Iris.SliderNum({ "Air Roll Strength" }, { number = Config.airRollStength })
