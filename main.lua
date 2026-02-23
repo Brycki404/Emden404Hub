@@ -3,7 +3,7 @@ local SCRIPT_VERSION = {
     --Semantic Versioning
     Major = 1;
     Minor = 1;
-    Patch = 8;
+    Patch = 7;
 }
 
 local genv = getgenv()
@@ -190,10 +190,10 @@ genv.Config = {
         ["airPitchEnabled"] = false;
         ["powerSlideEnabled"] = false;
     });
-    ["airRollLeftKeybind"] = Iris.State("A");
-    ["airRollRightKeybind"] = Iris.State("D");
-    ["airPitchUpKeybind"] = Iris.State("R");
-    ["airPitchDownKeybind"] = Iris.State("F");
+    ["airRollLeftKeybind"] = Iris.State("R");
+    ["airRollRightKeybind"] = Iris.State("T");
+    ["airPitchUpKeybind"] = Iris.State("F");
+    ["airPitchDownKeybind"] = Iris.State("V");
     ["powerSlideLeftKeybind"] = Iris.State("A");
     ["powerSlideRightKeybind"] = Iris.State("D");
     ["airRollStrength"] = Iris.State(50000); -- Degrees
