@@ -3,7 +3,7 @@ local SCRIPT_VERSION = {
     --Semantic Versioning
     Major = 1;
     Minor = 1;
-    Patch = 7;
+    Patch = 8;
 }
 
 local genv = getgenv()
@@ -1353,7 +1353,7 @@ Iris:Connect(function()
                             keybindButton("Power Slide Left Keybind", Config.powerSlideLeftKeybind)
                             keybindButton("Power Slide Right Keybind", Config.powerSlideRightKeybind)
 
-                            local powerSlideStrength = Iris.SliderNum({ "Power Slide Strength" , 1200, 100, 10000}, { number = Config.powerSlideStrength })
+                            local powerSlideStrength = Iris.SliderNum({ "Power Slide Strength" , 10000, 200, 50000}, { number = Config.powerSlideStrength })
                             if powerSlideStrength.numberChanged() then
                                 Config.powerSlideStrength:set(powerSlideStrength.state.number:get())
                             end
