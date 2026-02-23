@@ -2,7 +2,7 @@ local SCRIPT_NAME = "Emden404Hub"
 local SCRIPT_VERSION = {
     --Semantic Versioning
     Major = 1;
-    Minor = 0;
+    Minor = 1;
     Patch = 0;
 }
 
@@ -175,11 +175,28 @@ genv.Config = {
         ["antiTazerEnabled"] = false;
         ["antiHackBypassEnabled"] = false;
     });
+
     ["carDamageDisabled"] = Iris.State(false);
     ["vehicleNoclipEnabled"] = Iris.State(false);
+
     ["ghostriderEnabled"] = Iris.State(false);
     ["nitrous"] = Iris.State(100);
     ["airbrake"] = Iris.State(0.005);  -- Range 0 to 1 (0.1 is slow stop, 0.9 is almost instant)
+
+    ["rocketLeagueControls"] = Iris.State({
+        ["airRollEnabled"] = false;
+        ["airPitchEnabled"] = false;
+        ["powerSlideEnabled"] = false;
+    })
+    ["airRollLeftKeybind"] = Iris.State("Q");
+    ["airRollRightKeybind"] = Iris.State("E");
+    ["airPitchUpKeybind"] = Iris.State("R");
+    ["airPitchDownKeybind"] = Iris.State("F");
+    ["powerSlideLeftKeybind"] = Iris.State("A");
+    ["powerSlideRightKeybind"] = Iris.State("D");
+    ["airRollStength"] = Iris.State(15); -- (Degrees/second) Range 0 to 180
+    ["airPitchStrength"] = Iris.State(15); -- (Degrees/second) Range 0 to 180
+    ["powerSlideStrength"] = Iris.State(15); -- (Degrees/second) Range 0 to 180
 
     ["ESP"] = {
         ["MasterMaxRenderDistance"] = Iris.State(20000);
@@ -413,7 +430,7 @@ local function ghostriderEnabledChanged(enabled)
     end
     if enabled then
         if not ghostriderConnection then
-            ghostriderConnection = RunService.Stepped:Connect(function()
+            ghostriderConnection = RunService.PreSimulation:Connect(function()
                 local intens = Config.nitrous:get()
                 local brakePower = Config.airbrake:get()
 
@@ -467,6 +484,114 @@ local function extendToolHitbox()
     a.Adornee = handle
     handle.Size=Vector3.new(20, 20, 20)
     handle.Transparency = 1
+end
+
+local rocketleagueConnection = nil
+local function rocketLeagueControlsChanged(controls)
+    if controls == nil then
+        controls = Config.rocketLeagueControls:get()
+    end
+    local amountEnabled = 0
+    local enable = true
+    for _, v in pairs(controls) do
+        if v == true then
+            amountEnabled += 1
+        end
+    end
+    if amountEnabled == 0 then
+        enable = false
+    end
+    if enable then
+        if not rocketleagueConnection then
+            rocketleagueConnection = RunService.PreSimulation:Connect(function(t: number, dt: number)
+                local controlsNow = Config.rocketLeagueControls:get()
+                local disable = false
+                for _, v in pairs(controlsNow) do
+                    if v == true then
+                        amountEnabled += 1
+                    end
+                end
+                if amountEnabled == 0 then
+                    disable = true
+                end
+                amountEnabled = 0
+                if disable then
+                    rocketleagueConnection:Disconnect()
+                    rocketleagueConnection = nil
+                    return
+                end
+
+                local maxAirRollStrength = math.rad(Config.airRollStength:get())
+                local maxAirPitchStrength = math.rad(Config.airPitchStrength:get())
+                local maxPowerSlideStrength = math.rad(Config.powerSlideStrength:get())
+
+                local airRollStrength = math.max(maxAirRollStrength * dt, 0)
+                local airPitchStrength = math.max(maxAirPitchStrength * dt, 0)
+                local powerSlideStrength = math.max(maxPowerSlideStrength * dt, 0)
+
+                local keybinds = {
+                    airRollLeft = {controlsNow.airRollEnabled, Config.airRollLeftKeybind:get(), Vector3.new(0, 0, airRollStrength)};
+                    airRollRight = {controlsNow.airRollEnabled, Config.airRollRightKeybind:get(), Vector3.new(0, 0, -airRollStrength)};
+                    airPitchUp = {controlsNow.airPitchEnabled, Config.airPitchUpKeybind:get(), Vector3.new(airPitchStrength, 0, 0)};
+                    airPitchDown = {controlsNow.airPitchEnabled, Config.airPitchDownKeybind:get(), Vector3.new(-airPitchStrength, 0, 0)};
+                    powerSlideLeft = {controlsNow.powerSlideEnabled, Config.powerSlideLeftKeybind:get(), Vector3.new(0, powerSlideStrength, 0)};
+                    powerSlideRight = {controlsNow.powerSlideEnabled, Config.powerSlideRightKeybind:get(), Vector3.new(0, -powerSlideStrength, 0)};
+                }
+
+                local subject = workspace.CurrentCamera.CameraSubject
+                local targetPart = nil
+
+                -- Determine the target (Seat or Part)
+                if subject:IsA("Humanoid") and subject.SeatPart then
+                    targetPart = subject.SeatPart
+                elseif subject:IsA("BasePart") then
+                    targetPart = subject
+                end
+
+                if not targetPart then return end
+                
+                for _, k in pairs(keybinds) do
+                    if k[1] ~= true then
+                        continue
+                    end
+                    local keyCodeName = k[2]
+                    if not keyCodeName then
+                        continue
+                    end
+                    local keyCode = Enum.KeyCode[keyCodeName]
+                    if not keyCode then
+                        continue
+                    end
+                    local impulse = k[3]
+                    if not impulse then
+                        continue
+                    end
+                    if UserInputService:IsKeyDown(keyCode) then
+                        targetPart.AssemblyAngularVelocity += impulse
+                    end
+                end
+                local aav = targetPart.AssemblyAngularVelocity
+                local rx, ry, rz = aav.X, aav.Y, aav.Z
+                if controlsNow.airPitchEnabled then
+                    rx = math.clamp(rx, -maxAirPitchStrength, maxAirPitchStrength)
+                end
+                if controlsNow.powerSlideEnabled then
+                    ry = math.clamp(ry, -maxPowerSlideStrength, maxPowerSlideStrength)
+                end
+                if controlsNow.airRollEnabled then
+                    rz = math.clamp(rz, -maxAirRollStrength, maxAirRollStrength)
+                end
+                targetPart.AssemblyAngularVelocity = Vector3.new(rx, ry, rz)
+            end)
+        end
+    else
+        if rocketleagueConnection then
+            if rocketleagueConnection.Connected then
+                rocketleagueConnection:Disconnect()
+            end
+            rocketleagueConnection = nil
+        end
+    end
 end
 
 function setPropertiesRecursively(instance, properties)
@@ -943,6 +1068,9 @@ local ConfigDisplayNames = {
     ["antiRagdollEnabled"] = "Anti-Ragdoll Enabled";
     ["antiTazerEnabled"] = "Anti-Tazer Enabled";
     ["antiHackBypassEnabled"] = "Anti-Hack Bypass Enabled";
+    ["airRollEnabled"] = "Air Roll Enabled";
+    ["airPitchEnabled"] = "Air Pitch Enabled";
+    ["powerSlideEnabled"] = "Power Slide Enabled";
 }
 
 -- Widgets
@@ -1157,22 +1285,60 @@ Iris:Connect(function()
                     Config.vehicleNoclipEnabled:set(newEnabled)
                     vehicleNoclipEnabledChanged(newEnabled)
                 end
-
-                local nitrous = Iris.SliderNum({"Ghost Rider Nitrous", 1, 0, 5000}, { number = Config.nitrous })
-                if nitrous.numberChanged() then
-                    Config.nitrous:set(nitrous.state.number:get())
-                end
-
-                local airbrake = Iris.SliderNum({"Ghost Rider Airbrake", 0.001, 0, 1}, { number = Config.airbrake })
-                if airbrake.numberChanged() then
-                    Config.airbrake:set(airbrake.state.number:get())
-                end
                 
                 local GhostriderEnabled = Iris.Checkbox({"Ghost Rider Enabled"}, { isChecked = Config.ghostriderEnabled })
                 if GhostriderEnabled.checked() or GhostriderEnabled.unchecked() then
                     local newEnabled = GhostriderEnabled.state.isChecked:get()
                     Config.ghostriderEnabled:set(newEnabled)
                     ghostriderEnabledChanged(newEnabled)
+                end
+
+                if GhostriderEnabled.state.isChecked:get() then
+                    local nitrous = Iris.SliderNum({"Ghost Rider Nitrous", 1, 0, 5000}, { number = Config.nitrous })
+                    if nitrous.numberChanged() then
+                        Config.nitrous:set(nitrous.state.number:get())
+                    end
+
+                    local airbrake = Iris.SliderNum({"Ghost Rider Airbrake", 0.001, 0, 1}, { number = Config.airbrake })
+                    if airbrake.numberChanged() then
+                        Config.airbrake:set(airbrake.state.number:get())
+                    end
+                end
+
+                Iris.SeparatorText({ "Vehicles: This is Rocket League!" })
+
+                for i, bool: boolean in pairs(Config.rocketLeagueControls:get()) do
+                    local ConfigDisplayName = ConfigDisplayNames[i] or i
+                    local checkbox = Iris.Checkbox({ConfigDisplayName}, { isChecked = Iris.WeakState(bool) })
+                    if checkbox.checked() or checkbox.unchecked() then
+                        local newBool = checkbox.state.isChecked:get()
+                        local rocketLeagueControls = Config.rocketLeagueControls:get()
+                        rocketLeagueControls[i] = newBool
+                        Config.rocketLeagueControls:set(rocketLeagueControls)
+                        rocketLeagueControlsChanged(rocketLeagueControls)
+                    end
+                end
+
+                local airRollEnabled = Iris.Checkbox({"Air Roll Enabled"}, { isChecked = Config.airRollEnabled })
+                if airRollEnabled.checked() or airRollEnabled.unchecked() then
+                    local newEnabled = airRollEnabled.state.isChecked:get()
+                    Config.airRollEnabled:set(newEnabled)
+                    airRollEnabled(newEnabled)
+                end
+
+                local airRollStength = Iris.SliderNum({ "Air Roll Strength" }, { number = Config.airRollStength })
+                if airRollStength.numberChanged() then
+                    Config.airRollStength:set(airRollStength.state.number:get())
+                end
+                
+                local airPitchStrength = Iris.SliderNum({ "Air Pitch Strength" }, { number = Config.airPitchStrength })
+                if airPitchStrength.numberChanged() then
+                    Config.airPitchStrength:set(airPitchStrength.state.number:get())
+                end
+
+                local powerSlideStrength = Iris.SliderNum({ "Power Slide Strength" }, { number = Config.powerSlideStrength })
+                if powerSlideStrength.numberChanged() then
+                    Config.powerSlideStrength:set(powerSlideStrength.state.number:get())
                 end
 
                 Iris.SeparatorText({ "Tools" })
