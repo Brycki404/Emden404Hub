@@ -1309,7 +1309,7 @@ Iris:Connect(function()
                 
                 if hydroxideLoaded:get() then
                     Iris.Text("Hydroxide Loaded!")
-                elseif Iris.Button({"Run Hydroxide"}) then
+                elseif Iris.Button({"Run Hydroxide"}).clicked() then
                     hydroxideLoaded:set(true)
                     if RunHydroxide ~= nil and type(RunHydroxide) == "function" then
                         RunHydroxide()
