@@ -177,6 +177,9 @@ genv.Config = {
     });
     ["carDamageDisabled"] = Iris.State(false);
     ["vehicleNoclipEnabled"] = Iris.State(false);
+    ["ghostriderEnabled"] = Iris.State(false);
+    ["nitrous"] = Iris.State(100);
+    ["airbrake"] = Iris.State(0.005);  -- Range 0 to 1 (0.1 is slow stop, 0.9 is almost instant)
 
     ["ESP"] = {
         ["MasterMaxRenderDistance"] = Iris.State(20000);
@@ -399,6 +402,55 @@ local function vehicleNoclipEnabledChanged(enabled)
                 vehicleNoclipConnection:Disconnect()
             end
             vehicleNoclipConnection = nil
+        end
+    end
+end
+
+local ghostriderConnection = nil
+local function ghostriderEnabledChanged(enabled)
+    if enabled == nil then
+        enabled = Config.ghostriderEnabled:get()
+    end
+    if enabled then
+        if not ghostriderConnection then
+            ghostriderConnection = RunService.Stepped:Connect(function()
+                local intens = Config.nitrous:get()
+                local brakePower = Config.brakePower:get()
+
+                local subject = workspace.CurrentCamera.CameraSubject
+                local targetPart = nil
+
+                -- Determine the target (Seat or Part)
+                if subject:IsA("Humanoid") and subject.SeatPart then
+                    targetPart = subject.SeatPart
+                elseif subject:IsA("BasePart") then
+                    targetPart = subject
+                end
+
+                if not targetPart then return end
+
+                -- BOOST LOGIC (Left Shift)
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    targetPart:ApplyImpulse(targetPart.CFrame.LookVector * Vector3.new(intens, intens, intens))
+                end
+
+                -- SMOOTH BRAKE LOGIC (Left Control)
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                    -- We 'Lerp' the current velocity toward a zero vector
+                    -- This creates a "Tween" effect for physics
+                    targetPart.AssemblyLinearVelocity = targetPart.AssemblyLinearVelocity:Lerp(Vector3.zero, brakePower)
+                    
+                    -- We also smooth out the spinning/rotation so it doesn't jitter
+                    targetPart.AssemblyAngularVelocity = targetPart.AssemblyAngularVelocity:Lerp(Vector3.zero, brakePower)
+                end
+            end)
+        end
+    else
+        if ghostriderConnection then
+            if ghostriderConnection.Connected then
+                ghostriderConnection:Disconnect()
+            end
+            ghostriderConnection = nil
         end
     end
 end
@@ -1090,6 +1142,8 @@ Iris:Connect(function()
                     end
                 end
 
+                Iris.SeparatorText({ "Vehicles" })
+
                 local CarDamageDisabled = Iris.Checkbox({"Car Damage Disabled"}, { isChecked = Config.carDamageDisabled })
                 if CarDamageDisabled.checked() or CarDamageDisabled.unchecked() then
                     local newDisabled = CarDamageDisabled.state.isChecked:get()
@@ -1103,6 +1157,25 @@ Iris:Connect(function()
                     Config.vehicleNoclipEnabled:set(newEnabled)
                     vehicleNoclipEnabledChanged(newEnabled)
                 end
+
+                local nitrous = Iris.SliderNum({"Ghost Rider Nitrous", 1, 0, 5000}, { number = Config.nitrous })
+                if nitrous.numberChanged() then
+                    Config.nitrous:set(nitrous.state.number:get())
+                end
+
+                local airbrake = Iris.SliderNum({"Ghost Rider Airbrake", 0.001, 0, 1}, { number = Config.airbrake })
+                if airbrake.numberChanged() then
+                    Config.airbrake:set(airbrake.state.number:get())
+                end
+                
+                local GhostriderEnabled = Iris.Checkbox({"Ghost Rider Enabled"}, { isChecked = Config.ghostriderEnabled })
+                if GhostriderEnabled.checked() or GhostriderEnabled.unchecked() then
+                    local newEnabled = GhostriderEnabled.state.isChecked:get()
+                    Config.ghostriderEnabled:set(newEnabled)
+                    ghostriderEnabledChanged(newEnabled)
+                end
+
+                Iris.SeparatorText({ "Tools" })
 
                 local hitboxExtendTool = Iris.Button({"Extend Hitbox (Melee)"})
                 if hitboxExtendTool.clicked() then
