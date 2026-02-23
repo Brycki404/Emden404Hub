@@ -3,7 +3,7 @@ local SCRIPT_VERSION = {
     --Semantic Versioning
     Major = 1;
     Minor = 1;
-    Patch = 1;
+    Patch = 7;
 }
 
 local genv = getgenv()
@@ -180,6 +180,8 @@ genv.Config = {
     ["vehicleNoclipEnabled"] = Iris.State(false);
 
     ["ghostriderEnabled"] = Iris.State(false);
+    ["nitrousKeybind"] = Iris.State("LeftShift");
+    ["airbrakeKeybind"] = Iris.State("LeftCtrl");
     ["nitrous"] = Iris.State(100);
     ["airbrake"] = Iris.State(0.005);  -- Range 0 to 1 (0.1 is slow stop, 0.9 is almost instant)
 
@@ -188,15 +190,15 @@ genv.Config = {
         ["airPitchEnabled"] = false;
         ["powerSlideEnabled"] = false;
     });
-    ["airRollLeftKeybind"] = Iris.State("Q");
-    ["airRollRightKeybind"] = Iris.State("E");
+    ["airRollLeftKeybind"] = Iris.State("A");
+    ["airRollRightKeybind"] = Iris.State("D");
     ["airPitchUpKeybind"] = Iris.State("R");
     ["airPitchDownKeybind"] = Iris.State("F");
     ["powerSlideLeftKeybind"] = Iris.State("A");
     ["powerSlideRightKeybind"] = Iris.State("D");
-    ["airRollStength"] = Iris.State(15); -- (Degrees/second) Range 0 to 180
-    ["airPitchStrength"] = Iris.State(15); -- (Degrees/second) Range 0 to 180
-    ["powerSlideStrength"] = Iris.State(15); -- (Degrees/second) Range 0 to 180
+    ["airRollStrength"] = Iris.State(50000); -- Degrees
+    ["airPitchStrength"] = Iris.State(50000); -- Degrees
+    ["powerSlideStrength"] = Iris.State(50000); -- Degrees
 
     ["ESP"] = {
         ["MasterMaxRenderDistance"] = Iris.State(20000);
@@ -503,7 +505,7 @@ local function rocketLeagueControlsChanged(controls)
     end
     if enable then
         if not rocketleagueConnection then
-            rocketleagueConnection = RunService.PreSimulation:Connect(function(t: number, dt: number)
+            rocketleagueConnection = RunService.PreSimulation:Connect(function(dt: number)
                 local controlsNow = Config.rocketLeagueControls:get()
                 local disable = false
                 for _, v in pairs(controlsNow) do
@@ -521,21 +523,17 @@ local function rocketLeagueControlsChanged(controls)
                     return
                 end
 
-                local maxAirRollStrength = math.rad(Config.airRollStength:get())
-                local maxAirPitchStrength = math.rad(Config.airPitchStrength:get())
-                local maxPowerSlideStrength = math.rad(Config.powerSlideStrength:get())
-
-                local airRollStrength = math.max(maxAirRollStrength * dt, 0)
-                local airPitchStrength = math.max(maxAirPitchStrength * dt, 0)
-                local powerSlideStrength = math.max(maxPowerSlideStrength * dt, 0)
+                local airRollStrength = math.rad(Config.airRollStrength:get())
+                local airPitchStrength = math.rad(Config.airPitchStrength:get())
+                local powerSlideStrength = math.rad(Config.powerSlideStrength:get())
 
                 local keybinds = {
-                    airRollLeft = {controlsNow.airRollEnabled, Config.airRollLeftKeybind:get(), Vector3.new(0, 0, airRollStrength)};
-                    airRollRight = {controlsNow.airRollEnabled, Config.airRollRightKeybind:get(), Vector3.new(0, 0, -airRollStrength)};
-                    airPitchUp = {controlsNow.airPitchEnabled, Config.airPitchUpKeybind:get(), Vector3.new(airPitchStrength, 0, 0)};
-                    airPitchDown = {controlsNow.airPitchEnabled, Config.airPitchDownKeybind:get(), Vector3.new(-airPitchStrength, 0, 0)};
-                    powerSlideLeft = {controlsNow.powerSlideEnabled, Config.powerSlideLeftKeybind:get(), Vector3.new(0, powerSlideStrength, 0)};
-                    powerSlideRight = {controlsNow.powerSlideEnabled, Config.powerSlideRightKeybind:get(), Vector3.new(0, -powerSlideStrength, 0)};
+                    airRollLeft = {controlsNow.airRollEnabled, Config.airRollLeftKeybind:get(), "LookVector", -airRollStrength};
+                    airRollRight = {controlsNow.airRollEnabled, Config.airRollRightKeybind:get(), "LookVector", airRollStrength};
+                    airPitchUp = {controlsNow.airPitchEnabled, Config.airPitchUpKeybind:get(), "RightVector" , airPitchStrength};
+                    airPitchDown = {controlsNow.airPitchEnabled, Config.airPitchDownKeybind:get(), "RightVector", -airPitchStrength};
+                    powerSlideLeft = {controlsNow.powerSlideEnabled, Config.powerSlideLeftKeybind:get(), "UpVector", powerSlideStrength};
+                    powerSlideRight = {controlsNow.powerSlideEnabled, Config.powerSlideRightKeybind:get(), "UpVector", -powerSlideStrength};
                 }
 
                 local subject = workspace.CurrentCamera.CameraSubject
@@ -562,24 +560,40 @@ local function rocketLeagueControlsChanged(controls)
                     if not keyCode then
                         continue
                     end
-                    local impulse = k[3]
-                    if not impulse then
+                    local dir = k[3]
+                    if not dir then
+                        continue
+                    end
+                    local strength = k[4]
+                    if not strength then
+                        continue
+                    end
+                    local must = k[5]
+                    if must ~= nil and UserInputService:IsKeyDown(must) == false then
+                        continue
+                    end
+                    local mustnt = k[6]
+                    if mustnt ~= nil and UserInputService:IsKeyDown(mustnt) == true then
                         continue
                     end
                     if UserInputService:IsKeyDown(keyCode) then
-                        targetPart.AssemblyAngularVelocity += impulse
+                        targetPart:ApplyAngularImpulse(targetPart.CFrame[dir] * strength)
                     end
                 end
                 local aav = targetPart.AssemblyAngularVelocity
                 local rx, ry, rz = aav.X, aav.Y, aav.Z
+                local eachmax = math.rad(90)
                 if controlsNow.airPitchEnabled then
-                    rx = math.clamp(rx, -maxAirPitchStrength, maxAirPitchStrength)
+                    local max = eachmax
+                    rx = math.clamp(rx, -max, max)
                 end
                 if controlsNow.powerSlideEnabled then
-                    ry = math.clamp(ry, -maxPowerSlideStrength, maxPowerSlideStrength)
+                    local max = eachmax
+                    ry = math.clamp(ry, -max, max)
                 end
                 if controlsNow.airRollEnabled then
-                    rz = math.clamp(rz, -maxAirRollStrength, maxAirRollStrength)
+                    local max = eachmax
+                    rz = math.clamp(rz, -max, max)
                 end
                 targetPart.AssemblyAngularVelocity = Vector3.new(rx, ry, rz)
             end)
@@ -1099,7 +1113,7 @@ Iris:Connect(function()
             do
                 Iris.SeparatorText({"Master Settings"})
 
-                local MasterMaxRenderDistance = Iris.DragNum({"Max Render Distacne", 1, 0, 20000}, { number = Config.ESP.MasterMaxRenderDistance })
+                local MasterMaxRenderDistance = Iris.DragNum({"Max Render Distance", 1, 0, 20000}, { number = Config.ESP.MasterMaxRenderDistance })
                 if MasterMaxRenderDistance.numberChanged() then
                     Config.ESP.MasterMaxRenderDistance:set(MasterMaxRenderDistance.state.number:get())
                 end
@@ -1317,21 +1331,34 @@ Iris:Connect(function()
                         Config.rocketLeagueControls:set(rocketLeagueControls)
                         rocketLeagueControlsChanged(rocketLeagueControls)
                     end
-                end
 
-                local airRollStength = Iris.SliderNum({ "Air Roll Strength" }, { number = Config.airRollStength })
-                if airRollStength.numberChanged() then
-                    Config.airRollStength:set(airRollStength.state.number:get())
-                end
-                
-                local airPitchStrength = Iris.SliderNum({ "Air Pitch Strength" }, { number = Config.airPitchStrength })
-                if airPitchStrength.numberChanged() then
-                    Config.airPitchStrength:set(airPitchStrength.state.number:get())
-                end
+                    if checkbox.state.isChecked:get() then
+                        if i == "airRollEnabled" then
+                            keybindButton("Air Roll Left Keybind", Config.airRollLeftKeybind)
+                            keybindButton("Air Roll Right Keybind", Config.airRollRightKeybind)
 
-                local powerSlideStrength = Iris.SliderNum({ "Power Slide Strength" }, { number = Config.powerSlideStrength })
-                if powerSlideStrength.numberChanged() then
-                    Config.powerSlideStrength:set(powerSlideStrength.state.number:get())
+                            local airRollStrength = Iris.SliderNum({ "Air Roll Strength" , 10000, 1000, 100000}, { number = Config.airRollStrength })
+                            if airRollStrength.numberChanged() then
+                                Config.airRollStrength:set(airRollStrength.state.number:get())
+                            end
+                        elseif i == "airPitchEnabled" then
+                            keybindButton("Air Pitch Up Keybind", Config.airPitchUpKeybind)
+                            keybindButton("Air Pitch Down Keybind", Config.airPitchDownKeybind)
+
+                            local airPitchStrength = Iris.SliderNum({ "Air Pitch Strength" , 10000, 1000, 200000}, { number = Config.airPitchStrength })
+                            if airPitchStrength.numberChanged() then
+                                Config.airPitchStrength:set(airPitchStrength.state.number:get())
+                            end
+                        elseif i  == "powerSlideEnabled" then
+                            keybindButton("Power Slide Left Keybind", Config.powerSlideLeftKeybind)
+                            keybindButton("Power Slide Right Keybind", Config.powerSlideRightKeybind)
+
+                            local powerSlideStrength = Iris.SliderNum({ "Power Slide Strength" , 1200, 100, 10000}, { number = Config.powerSlideStrength })
+                            if powerSlideStrength.numberChanged() then
+                                Config.powerSlideStrength:set(powerSlideStrength.state.number:get())
+                            end
+                        end
+                    end
                 end
 
                 Iris.SeparatorText({ "Tools" })
@@ -1387,9 +1414,6 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEv
         end
     end
 end)
-
-local MapFolder = workspace:FindFirstChild("map")
-local NPCFolder = MapFolder:FindFirstChild("NPC")
 
 --ESP
 do
@@ -1711,35 +1735,7 @@ do
             calculations.FailedHealthDistance = MyDistanceSquared > MaxHealthDistanceSquared
         end
 
-        if entry.Category == "NPC" then
-            if not thisConfig then
-                return
-            end
-
-            DrawGenericShape(entry, calculations)
-            DrawText(entry, calculations)
-
-        elseif entry.Category == "Interactable" then
-            if not thisConfig then
-                return
-            end
-
-            DrawGenericShape(entry, calculations)
-            DrawText(entry, calculations)
-
-        elseif entry.Category == "Enemy" then
-            if not thisConfig then
-                return
-            end
-
-            local healthDisplayTypeIndex = thisConfig.HealthDisplayType:get()
-            local healthDisplayType = SELECTABLE_HEALTH_DISPLAY_TYPES[healthDisplayTypeIndex]
-
-            DrawGenericShape(entry, calculations)
-            DrawText(entry, calculations)
-            DrawHealthbar(entry, calculations, healthDisplayType)
-            
-        elseif entry.Category == "Player" then
+        if entry.Category == "Player" then
             if not thisConfig then
                 return
             end
@@ -1782,34 +1778,11 @@ do
         end
         local id = tostring(Model:GetDebugId())
         if not ESPList[id] then
-            if Model:IsDescendantOf(NPCFolder) then
-                if Model.Name == "ChatBox" then
-                    if Model.Parent:FindFirstChildOfClass("Humanoid") then
-                        Draw(Model, {
-                            Part = Model;
-                            DisplayName = Model.Parent.Name;
-                            Category = "NPC";
-                        })
-                    else
-                        Draw(Model, {
-                            Part = Model;
-                            DisplayName = Model.Parent.Name;
-                            Category = "Interactable";
-                        })
-                    end
-                end
-            elseif Model:IsDescendantOf(workspace) and Model:IsA("Model") then
+           if Model:IsDescendantOf(workspace) and Model:IsA("Model") then
                 local Humanoid = Model:FindFirstChildOfClass("Humanoid")
                 if Humanoid then
                     local gotPlayer = Players:GetPlayerFromCharacter(Model)
-                    if not gotPlayer then
-                        Draw(Model, {
-                            Part = Model.PrimaryPart or Model:FindFirstChild("HumanoidRootPart");
-                            DisplayName = Model.Name;
-                            Category = "Enemy";
-                            Humanoid = Humanoid;
-                        })
-                    elseif gotPlayer then
+                    if gotPlayer then
                         if gotPlayer ~= LocalPlayer then
                             Draw(Model, {
                                 Part = Model.PrimaryPart or Model:FindFirstChild("HumanoidRootPart");
@@ -1834,26 +1807,7 @@ do
         end)
     end
 
-    for i: number, v: Instance in ipairs(workspace:GetDescendants()) do
-        task.spawn(function()
-            if v:IsDescendantOf(NPCFolder) then
-                local Humanoid = v:FindFirstChildOfClass("Humanoid")
-                if Humanoid then
-                    makeESP(v)
-                else
-                    if v.Name == "ChatBox" then
-                        makeESP(v)
-                    end
-                end
-            end
-        end)
-    end
-
     local workspace_child_added_connection = workspace.ChildAdded:Connect(function(v)
-        task.spawn(makeESP, v)
-    end)
-
-    local npc_descendant_added_connection = NPCFolder.DescendantAdded:Connect(function(v)
         task.spawn(makeESP, v)
     end)
 
