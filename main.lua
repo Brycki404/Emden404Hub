@@ -231,6 +231,30 @@ local SelectableCategories = {
 };
 local SelectedCategory = Iris.State(1);
 
+-- Dex++
+local dexLoaded = Iris.State(false)
+local DEX_URL = "https://rawscripts.net/raw/Universal-Script-DexPlusPlus-Explorer-57114"
+local RunDex = nil
+RunDex = function()
+    RunDex = nil
+    loadstring(Get(DEX_URL))()
+end
+-- Hydroxide
+local hydroxideLoaded = Iris.State(false)
+local RunHydroxide = nil
+RunHydroxide = function()
+    RunHydroxide = nil
+    local owner = "Upbolt"
+    local branch = "revision"
+
+    local function webImport(file)
+        return loadstring(Get(("https://raw.githubusercontent.com/%s/Hydroxide/%s/%s.lua"):format(owner, branch, file)), file .. '.lua')()
+    end
+
+    webImport("init")
+    webImport("ui/main")
+end
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -1267,6 +1291,30 @@ Iris:Connect(function()
                         end
                     end
                 end;
+            end
+            Iris.End()
+
+            Iris.Tab({"External Scripts"})
+            do
+                Iris.Text({"The following scripts are not owned by Brycki404 and could be altered by their owners to run malicious code! Run at your own discretion!"})
+                
+                if dexLoaded:get() then
+                    Iris.Text("Dex++ Loaded!")
+                elseif Iris.Button({"Run Dex++"}).clicked() then
+                    dexLoaded:set(true)
+                    if RunDex ~= nil and type(RunDex) == "function" then
+                        RunDex()
+                    end
+                end
+                
+                if hydroxideLoaded:get() then
+                    Iris.Text("Hydroxide Loaded!")
+                elseif Iris.Button({"Run Hydroxide"}) then
+                    hydroxideLoaded:set(true)
+                    if RunHydroxide ~= nil and type(RunHydroxide) == "function" then
+                        RunHydroxide()
+                    end
+                end
             end
             Iris.End()
 
