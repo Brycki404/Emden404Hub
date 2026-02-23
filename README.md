@@ -5,6 +5,6 @@ Copy and paste this into your executor to load the script:
 ```lua
 local TryGet = game.HttpGet or game.HttpGetAsync or nil
 assert(TryGet, "No Http GET function found. This script is unavailable for your executor.")
-loadstring(TryGet(game, "https://raw.githubusercontent.com/Brycki404/BetterLib/refs/heads/main/main.lua", true))()
+loadstring(TryGet(game, "https://raw.githubusercontent.com/Brycki404/Emden404Hub/refs/heads/main/main.lua", true))()
 ```
 It will print out an error if your executor can't run loadstring from a GitHub.
