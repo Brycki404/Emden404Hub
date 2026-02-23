@@ -746,11 +746,12 @@ local function keybindButton(text: string, state)
     do
         Iris.Text({ text })
         -- the button has a clicked event, returning true when it is pressed
-        if Iris.Button({state:get()}).clicked() then
+        local currentKeyCodeName = state:get()
+        if Iris.Button({currentKeyCodeName}).clicked() then
             -- run code if we click the button
             UserInputService.InputBegan:Once(function(input: InputObject, gameProcessedEvent: boolean)
                 if not gameProcessedEvent then
-                    if input.KeyCode and input.KeyCode.Name then
+                    if input and input.KeyCode and input.KeyCode.Name and input.KeyCode.Name ~= currentKeyCodeName then
                         state:set(input.KeyCode.Name)
                     end
                 end
