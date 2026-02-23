@@ -415,7 +415,7 @@ local function ghostriderEnabledChanged(enabled)
         if not ghostriderConnection then
             ghostriderConnection = RunService.Stepped:Connect(function()
                 local intens = Config.nitrous:get()
-                local brakePower = Config.brakePower:get()
+                local brakePower = Config.airbrake:get()
 
                 local subject = workspace.CurrentCamera.CameraSubject
                 local targetPart = nil
