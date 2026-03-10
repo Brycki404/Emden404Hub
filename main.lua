@@ -64,7 +64,14 @@ local ver = FormatSemVer(SCRIPT_VERSION)
 
 -- Setup executor workspace file directory for saving configs and settings:
 
-local HTTPService = game:GetService("HttpService")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
 --Check Executor Has Global Function
 function genv.CEHGF(name: string): boolean
@@ -260,14 +267,183 @@ RunHydroxide = function()
     webImport("init")
     webImport("ui/main")
 end
+-- Vehicle Fling
+local vehicleFlingLoaded = Iris.State(false)
+local RunVehicleFling = nil
+RunVehicleFling = function()
+    RunVehicleFling = nil
+    -- ==========================================
+    -- GUI SETUP
+    -- ==========================================
+    local screenGui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+    screenGui.Name = "MassiveFlingGui"
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local CollectionService = game:GetService("CollectionService")
+    -- Invisible container to hold both Search Bar and the List
+    local container = Instance.new("Frame", screenGui)
+    container.Size = UDim2.new(0, 280, 0, 500) 
+    container.Position = UDim2.new(0.05, 0, 0.2, 0)
+    container.BackgroundTransparency = 1
 
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+    -- Search Bar
+    local searchBar = Instance.new("TextBox", container)
+    searchBar.Size = UDim2.new(1, 0, 0, 45)
+    searchBar.Position = UDim2.new(0, 0, 0, 0)
+    searchBar.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    searchBar.TextColor3 = Color3.new(1, 1, 1)
+    searchBar.PlaceholderText = "Search username..."
+    searchBar.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+    searchBar.Font = Enum.Font.SourceSansBold
+    searchBar.TextSize = 20
+    searchBar.ClearTextOnFocus = false
+
+    -- Player List
+    local frame = Instance.new("ScrollingFrame", container)
+    frame.Size = UDim2.new(1, 0, 1, -50) -- Fills the rest of the container
+    frame.Position = UDim2.new(0, 0, 0, 50)
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    frame.ScrollBarThickness = 8
+
+    local layout = Instance.new("UIListLayout", frame)
+    layout.Padding = UDim.new(0, 5)
+
+    local targetPlayer = nil
+    local isSpamming = false
+
+    -- ==========================================
+    -- VEHICLE DETECTION
+    -- ==========================================
+    local function getMySeat()
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.SeatPart then
+                return hum.SeatPart 
+            end
+        end
+        return nil
+    end
+
+    local function getMyVehicleModel()
+        local seat = getMySeat()
+        if seat then
+            local current = seat
+            while current and current.Parent and current.Parent ~= workspace do
+                current = current.Parent
+                if current:IsA("Model") and (current:FindFirstChild("Chassis") or current:FindFirstChild("Body") or current:FindFirstChild("Seats")) then
+                    return current
+                end
+            end
+            if seat.Parent:IsA("Model") then return seat.Parent end
+        end
+        return nil
+    end
+
+    -- ==========================================
+    -- THE PHYSICS LOOP
+    -- ==========================================
+    RunService.Heartbeat:Connect(function()
+        if isSpamming and targetPlayer and targetPlayer.Character then
+            local carModel = getMyVehicleModel()
+            local seat = getMySeat()
+            local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            
+            if carModel and seat and targetRoot then
+                carModel:PivotTo(targetRoot.CFrame)
+                
+                seat.AssemblyLinearVelocity = Vector3.new(0, 50, 0) 
+                seat.AssemblyAngularVelocity = Vector3.new(0, 15000, 0) 
+            end
+        end
+    end)
+
+    -- ==========================================
+    -- POPULATE PLAYER LIST (WITH SEARCH FILTER)
+    -- ==========================================
+    local function updateList(filterText)
+        -- Default to empty string if nil
+        filterText = filterText and string.lower(filterText) or ""
+        
+        for _, child in ipairs(frame:GetChildren()) do 
+            if child:IsA("TextButton") then child:Destroy() end 
+        end
+        
+        local buttonCount = 0
+        
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local playerName = string.lower(p.Name)
+                
+                -- If search is empty OR the player's name contains the search text, show them
+                if filterText == "" or string.find(playerName, filterText, 1, true) then
+                    buttonCount = buttonCount + 1
+                    
+                    local btn = Instance.new("TextButton", frame)
+                    btn.Size = UDim2.new(1, -15, 0, 50) 
+                    btn.Text = "FLING: " .. p.Name 
+                    
+                    -- Keep the button green if they are the current active target
+                    if targetPlayer == p and isSpamming then
+                        btn.Text = "🛑 STOP FLINGING"
+                        btn.BackgroundColor3 = Color3.fromRGB(30, 70, 30)
+                    else
+                        btn.BackgroundColor3 = Color3.fromRGB(70, 30, 30)
+                    end
+                    
+                    btn.TextColor3 = Color3.new(1, 1, 1)
+                    btn.Font = Enum.Font.SourceSansBold
+                    btn.TextSize = 22 
+                    btn.TextWrapped = true
+                    
+                    btn.MouseButton1Click:Connect(function()
+                        if targetPlayer == p and isSpamming then
+                            -- TURN OFF SAFELY
+                            isSpamming = false
+                            targetPlayer = nil
+                            
+                            btn.Text = "FLING: " .. p.Name 
+                            btn.BackgroundColor3 = Color3.fromRGB(70, 30, 30)
+                            
+                            local seat = getMySeat()
+                            local carModel = getMyVehicleModel()
+                            if seat and carModel then
+                                seat.AssemblyLinearVelocity = Vector3.zero
+                                seat.AssemblyAngularVelocity = Vector3.zero
+                                carModel:PivotTo(carModel:GetPivot() * CFrame.new(0, 5, 0))
+                            end
+                        else
+                            -- TURN ON
+                            targetPlayer = p
+                            isSpamming = true
+                            btn.Text = "🛑 STOP FLINGING"
+                            btn.BackgroundColor3 = Color3.fromRGB(30, 70, 30)
+                            
+                            -- Force a UI update so other buttons reset their colors if you switched targets mid-fling
+                            updateList(searchBar.Text)
+                        end
+                    end)
+                end
+            end
+        end
+        frame.CanvasSize = UDim2.new(0, 0, 0, buttonCount * 55)
+    end
+
+    -- Update list dynamically as you type
+    searchBar:GetPropertyChangedSignal("Text"):Connect(function()
+        updateList(searchBar.Text)
+    end)
+
+    -- Initial Load & Connections
+    updateList()
+    Players.PlayerAdded:Connect(function() updateList(searchBar.Text) end)
+    Players.PlayerRemoving:Connect(function() updateList(searchBar.Text) end)
+
+    -- Toggle Menu with 'K'
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if not gpe and input.KeyCode == Enum.KeyCode.K then
+            container.Visible = not container.Visible
+        end
+    end)
+end
 
 local antisConnection = nil
 local function antisChanged(antis)
@@ -1482,6 +1658,17 @@ Iris:Connect(function()
                         hydroxideLoaded:set(true)
                         if RunHydroxide ~= nil and type(RunHydroxide) == "function" then
                             task.spawn(RunHydroxide)
+                        end
+                    end
+                end
+
+                if vehicleFlingLoaded:get() then
+                    Iris.Text("Vehicle Fling Loaded!")
+                else
+                    if Iris.Button({"Run Vehicle Fling"}).clicked() then
+                        vehicleFlingLoaded:set(true)
+                        if RunVehicleFling ~= nil and type(RunVehicleFling) == "function" then
+                            task.spawn(RunVehicleFling)
                         end
                     end
                 end
