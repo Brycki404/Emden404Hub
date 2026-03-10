@@ -1,3 +1,6 @@
+--For clearing up underline spam in Visual Studio Code
+--local getgenv, Iris, ESP, BetterLib, Get, FormatSemVer, makefolder, CEHGF, EXECUTOR_FILING_FUNCTIONS, Config, FormatHours, CountList
+
 local SCRIPT_NAME = "Emden404Hub"
 local SCRIPT_VERSION = {
     --Semantic Versioning
@@ -233,7 +236,7 @@ local SelectedCategory = Iris.State(1);
 
 -- Dex++
 local dexLoaded = Iris.State(false)
-local DEX_URL = "https://rawscripts.net/raw/Universal-Script-DexPlusPlus-Explorer-57114"
+local DEX_URL = "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua"
 local RunDex = nil
 RunDex = function()
     RunDex = nil
@@ -505,7 +508,7 @@ local function extendToolHitbox()
     if not tool then return end
     local handle = tool:FindFirstChild("Handle")
     if not handle then return end
-    if typeof(handle) ~= "BasePart" then return end
+    if typeof(handle) ~= "Instance" or not handle:IsA("BasePart") then return end
     local a = Instance.new("SelectionBox", handle)
     a.Adornee = handle
     handle.Size=Vector3.new(20, 20, 20)
@@ -1301,19 +1304,23 @@ Iris:Connect(function()
                 
                 if dexLoaded:get() then
                     Iris.Text("Dex++ Loaded!")
-                elseif Iris.Button({"Run Dex++"}).clicked() then
-                    dexLoaded:set(true)
-                    if RunDex ~= nil and type(RunDex) == "function" then
-                        RunDex()
+                else
+                    if Iris.Button({"Run Dex++"}).clicked() then
+                        dexLoaded:set(true)
+                        if RunDex ~= nil and type(RunDex) == "function" then
+                            task.spawn(RunDex)
+                        end
                     end
                 end
                 
                 if hydroxideLoaded:get() then
                     Iris.Text("Hydroxide Loaded!")
-                elseif Iris.Button({"Run Hydroxide"}).clicked() then
-                    hydroxideLoaded:set(true)
-                    if RunHydroxide ~= nil and type(RunHydroxide) == "function" then
-                        RunHydroxide()
+                else
+                    if Iris.Button({"Run Hydroxide"}).clicked() then
+                        hydroxideLoaded:set(true)
+                        if RunHydroxide ~= nil and type(RunHydroxide) == "function" then
+                            task.spawn(RunHydroxide)
+                        end
                     end
                 end
             end
@@ -1846,7 +1853,7 @@ do
         end
     end
 
-    for i: number, v: Instance in ipairs(workspace:GetChildren()) do
+    for i: number, v: Instance in ipairs(workspace:GetDescendants()) do
         task.spawn(function()
             if v:IsA("Model") then
                 if v:FindFirstChildOfClass("Humanoid") then
@@ -1856,7 +1863,7 @@ do
         end)
     end
 
-    local workspace_child_added_connection = workspace.ChildAdded:Connect(function(v)
+    local workspace_child_added_connection = workspace.DescendantAdded:Connect(function(v)
         task.spawn(makeESP, v)
     end)
 
