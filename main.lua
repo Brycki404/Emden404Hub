@@ -2279,7 +2279,7 @@ do
 
     local function drawFunction()
         for modelId, entry in pairs(ESPList) do
-            if not entry.Model or not entry.Part then
+            if not entry.Model or not entry.Part or not entry.Model:IsDescendantOf(workspace) or not entry.Part:IsDescendantOf(workspace) then
                 table.clear(entry)
                 entry = nil
                 continue
@@ -2289,15 +2289,9 @@ do
     end
 
     local esp_update_draw_thread = task.spawn(function()
-        local framerate = 60
-        local frameTime = 1/framerate
-        local lastTime = nil
         while true do
-            if not lastTime or os.clock() - lastTime >= frameTime then
-                ESP:render(drawFunction)
-                lastTime = os.clock()
-            end
-            task.wait()
+            ESP:render(drawFunction)
+            RunService.RenderStepped:Wait()
         end
     end)
 end
