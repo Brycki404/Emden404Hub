@@ -945,7 +945,7 @@ do
     -- VEHICLE DETECTION
     -- ==========================================
     function getMyBus()
-        local character = player.Character
+        local character = LocalPlayer.Character
         if character then
             local humanoid = character:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.SeatPart then
@@ -956,7 +956,7 @@ do
                     if vehicle:IsA("Model") then
                         busModel = vehicle
                     elseif vehicle:IsA("Folder") then
-                        break 
+                        break
                     end
                 end
                 return busModel
@@ -985,7 +985,7 @@ do
             task.wait(0.5)
             local promptFound = false
             -- Search through PlayerGui for the specific text from your video
-            local guiObjects = player.PlayerGui:GetDescendants()
+            local guiObjects = LocalPlayer.PlayerGui:GetDescendants()
             for _, obj in ipairs(guiObjects) do
                 if obj:IsA("TextLabel") and (obj.Text:find("Stop Your Vehicle") or obj.Text:find("have to stop")) then
                     if obj.Visible == true and obj.TextTransparency < 1 then
