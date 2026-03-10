@@ -62,6 +62,12 @@ function genv.FormatSemVer(versionTable: { Major: number?, Minor: number?, Patch
 end
 local ver = FormatSemVer(SCRIPT_VERSION)
 
+local Emden_GameId = 4457060041
+if game.GameId ~= Emden_GameId then
+    warn("[EXECUTOR ERROR]: Script: "..SCRIPT_NAME.." v:"..ver.." failed to load because you're not playing Emden.")
+    return
+end
+
 -- Setup executor workspace file directory for saving configs and settings:
 
 local HttpService = game:GetService("HttpService")
