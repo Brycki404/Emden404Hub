@@ -186,7 +186,7 @@ genv.Config = {
     ["IrisColorsConfig"] = Iris.State({});
     ["IrisFontsConfig"] = Iris.State({});
 
-    ["windowKeyCode"] = Iris.State("F3");
+    ["windowKeyCode"] = Iris.State({"F3"});
 
     ["antis"] = Iris.State({
         ["antiCuffEnabled"] = false;
@@ -199,8 +199,12 @@ genv.Config = {
     ["vehicleNoclipEnabled"] = Iris.State(false);
 
     ["ghostriderEnabled"] = Iris.State(false);
-    ["nitrousKeybind"] = Iris.State("LeftShift");
-    ["airbrakeKeybind"] = Iris.State("LeftCtrl");
+    ["nitrousKeybind"] = Iris.State({ -- To-do (not even started yet)
+        "LeftShift";
+    });
+    ["airbrakeKeybind"] = Iris.State({ -- To-do (not even started yet)
+        "LeftCtrl";
+    });
     ["nitrous"] = Iris.State(100);
     ["airbrake"] = Iris.State(0.005);  -- Range 0 to 1 (0.1 is slow stop, 0.9 is almost instant)
 
@@ -209,12 +213,24 @@ genv.Config = {
         ["airPitchEnabled"] = false;
         ["powerSlideEnabled"] = false;
     });
-    ["airRollLeftKeybind"] = Iris.State("R");
-    ["airRollRightKeybind"] = Iris.State("T");
-    ["airPitchUpKeybind"] = Iris.State("F");
-    ["airPitchDownKeybind"] = Iris.State("V");
-    ["powerSlideLeftKeybind"] = Iris.State("A");
-    ["powerSlideRightKeybind"] = Iris.State("D");
+    ["airRollLeftKeybind"] = Iris.State({
+        "R";
+    });
+    ["airRollRightKeybind"] = Iris.State({
+        "T";
+    });
+    ["airPitchUpKeybind"] = Iris.State({
+        "F";
+    });
+    ["airPitchDownKeybind"] = Iris.State({
+        "V";
+    });
+    ["powerSlideLeftKeybind"] = Iris.State({
+        "A";
+    });
+    ["powerSlideRightKeybind"] = Iris.State({
+        "D";
+    });
     ["airRollStrength"] = Iris.State(50000); -- Degrees
     ["airPitchStrength"] = Iris.State(50000); -- Degrees
     ["powerSlideStrength"] = Iris.State(50000); -- Degrees
@@ -761,36 +777,38 @@ local function rocketLeagueControlsChanged(controls)
 
                 if not targetPart then return end
                 
-                for _, k in pairs(keybinds) do
+                for _, k in ipairs(keybinds) do
                     if k[1] ~= true then
                         continue
                     end
-                    local keyCodeName = k[2]
-                    if not keyCodeName then
-                        continue
-                    end
-                    local keyCode = Enum.KeyCode[keyCodeName]
-                    if not keyCode then
-                        continue
-                    end
-                    local dir = k[3]
-                    if not dir then
-                        continue
-                    end
-                    local strength = k[4]
-                    if not strength then
-                        continue
-                    end
-                    local must = k[5]
-                    if must ~= nil and UserInputService:IsKeyDown(must) == false then
-                        continue
-                    end
-                    local mustnt = k[6]
-                    if mustnt ~= nil and UserInputService:IsKeyDown(mustnt) == true then
-                        continue
-                    end
-                    if UserInputService:IsKeyDown(keyCode) then
-                        targetPart:ApplyAngularImpulse(targetPart.CFrame[dir] * strength)
+                    local keyCodeList = k[2]
+                    for _, keyCodeName in ipairs(keyCodeList) do
+                        if keyCodeName == nil or keyCodeName == "" or keyCodeName == "None" then
+                            continue
+                        end
+                        local keyCode = Enum.KeyCode[keyCodeName]
+                        if not keyCode then
+                            continue
+                        end
+                        local dir = k[3]
+                        if not dir then
+                            continue
+                        end
+                        local strength = k[4]
+                        if not strength then
+                            continue
+                        end
+                        local must = k[5]
+                        if must ~= nil and UserInputService:IsKeyDown(must) == false then
+                            continue
+                        end
+                        local mustnt = k[6]
+                        if mustnt ~= nil and UserInputService:IsKeyDown(mustnt) == true then
+                            continue
+                        end
+                        if UserInputService:IsKeyDown(keyCode) then
+                            targetPart:ApplyAngularImpulse(targetPart.CFrame[dir] * strength)
+                        end
                     end
                 end
                 local aav = targetPart.AssemblyAngularVelocity
@@ -1088,21 +1106,99 @@ local function textAndHelpMarker(text: string, helpText: string)
     Iris.End()
 end
 
-local function keybindButton(text: string, state)
-    Iris.SameLine()
-    do
-        Iris.Text({ text })
-        -- the button has a clicked event, returning true when it is pressed
-        local currentKeyCodeName = state:get()
-        if Iris.Button({currentKeyCodeName}).clicked() then
-            -- run code if we click the button
-            UserInputService.InputBegan:Once(function(input: InputObject, gameProcessedEvent: boolean)
+local waiting: RBXScriptConnection? = nil
+local function keybindButton(state: {[number]: string?}, index: number)
+    -- the button has a clicked event, returning true when it is pressed
+    local keybindingArray = state:get()
+    local currentKeyCodeName = keybindingArray and index and keybindingArray[index] or nil
+    if currentKeyCodeName == nil or currentKeyCodeName == "" then
+        currentKeyCodeName = "None"
+    end
+    if Iris.Button({currentKeyCodeName}).clicked() then
+        -- run code if we click the button
+        if not waiting then
+            waiting = UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
                 if not gameProcessedEvent then
-                    if input and input.KeyCode and input.KeyCode.Name and input.KeyCode.Name ~= currentKeyCodeName then
-                        state:set(input.KeyCode.Name)
+                    local newKeyCodeName = input and input.KeyCode and input.KeyCode.Name or nil
+                    if newKeyCodeName then
+                        if newKeyCodeName == Enum.KeyCode.Unknown.Name or newKeyCodeName == Enum.KeyCode.Escape.Name or newKeyCodeName == Enum.KeyCode.Return.Name then
+                            -- not usable keybinds, set to nil instead of the actual key
+                            newKeyCodeName = ""
+                        elseif newKeyCodeName == Enum.KeyCode.Thumbstick1.Name or newKeyCodeName == Enum.KeyCode.Thumbstick2.Name then
+                            -- append 4 direction flags to the keybind name
+                            local thumbstickVector = input.Position
+                            local x, y = thumbstickVector.X, thumbstickVector.Y
+                            -- Deadzone check to avoid drift
+                            local deadzone = 0.1
+                            if math.abs(x) < deadzone then x = 0 end
+                            if math.abs(y) < deadzone then y = 0 end
+                            local thumbstickName = newKeyCodeName
+                            if thumbstickVector.X < -deadzone then
+                                newKeyCodeName = thumbstickName.."Left"
+                            elseif thumbstickVector.X > deadzone then
+                                newKeyCodeName = thumbstickName.."Right"
+                            end
+                            if thumbstickVector.Y < -deadzone then
+                                newKeyCodeName = thumbstickName.."Down"
+                            elseif thumbstickVector.Y > deadzone then
+                                newKeyCodeName = thumbstickName.."Up"
+                            end
+                        end
+                        if newKeyCodeName == Enum.KeyCode.Thumbstick1.Name or newKeyCodeName == Enum.KeyCode.Thumbstick2.Name then
+                            -- If the input is a thumbstick with no direction (e.g., just pressed without moving), treat it as nil
+                            newKeyCodeName = ""
+                        end
+                        if newKeyCodeName ~= currentKeyCodeName then
+                            local array = state:get() or {}
+                            array[index] = newKeyCodeName
+                            state:set(array)
+                            
+                            if waiting then
+                                if waiting.Connected then
+                                    waiting:Disconnect()
+                                end
+                                waiting = nil
+                            end
+                        end
                     end
                 end
             end)
+        end
+    end
+end
+local function keybindWidget(text: string, state)
+    Iris.SameLine()
+    do
+        Iris.Text({ text })
+        local addButton = Iris.Button({ "+" })
+        Iris.Text({ "|" })
+        local subtractButton = Iris.Button({ "-" })
+        if addButton.clicked() then
+            -- add a new keybind to the array
+            local array = state:get() or {}
+            table.insert(array, "None") -- default value for new keybinds
+            state:set(array)
+        elseif subtractButton.clicked() then
+            -- remove the last keybind from the array
+            local array = state:get() or {}
+            if #array > 0 then
+                table.remove(array, #array)
+            end
+            state:set(array)
+        end
+    end
+    Iris.End()
+
+    local keybindsTree = Iris.Tree({"Keybind(s)"})
+    do
+        if keybindsTree.state.isUncollapsed:get() then
+            -- Keybind content would go here
+            local array = state:get()
+            if array and type(array) == "table" then
+                for i: number = 1, #array, 1 do
+                    keybindButton(state, i)
+                end
+            end
         end
     end
     Iris.End()
@@ -1475,7 +1571,13 @@ Iris:Connect(function()
         -- which is more efficient.
         Iris.Text({"Version: " .. ver})
         Iris.Text({"Your Session Time: " .. sessionTime})
-        keybindButton("Toggle UI Keybind", Config.windowKeyCode)
+
+        Iris.SameLine()
+        do
+            Iris.Text({ "Toggle UI Keybind" })
+            keybindButton(Config.windowKeyCode, 1)
+        end
+        Iris.End()
 
         mainMenuBar()
 
@@ -1731,24 +1833,24 @@ Iris:Connect(function()
 
                     if checkbox.state.isChecked:get() then
                         if i == "airRollEnabled" then
-                            keybindButton("Air Roll Left Keybind", Config.airRollLeftKeybind)
-                            keybindButton("Air Roll Right Keybind", Config.airRollRightKeybind)
+                            keybindWidget("Air Roll Left", Config.airRollLeftKeybind)
+                            keybindWidget("Air Roll Right", Config.airRollRightKeybind)
 
                             local airRollStrength = Iris.SliderNum({ "Air Roll Strength" , 10000, 1000, 100000}, { number = Config.airRollStrength })
                             if airRollStrength.numberChanged() then
                                 Config.airRollStrength:set(airRollStrength.state.number:get())
                             end
                         elseif i == "airPitchEnabled" then
-                            keybindButton("Air Pitch Up Keybind", Config.airPitchUpKeybind)
-                            keybindButton("Air Pitch Down Keybind", Config.airPitchDownKeybind)
+                            keybindWidget("Air Pitch Up", Config.airPitchUpKeybind)
+                            keybindWidget("Air Pitch Down", Config.airPitchDownKeybind)
 
                             local airPitchStrength = Iris.SliderNum({ "Air Pitch Strength" , 10000, 1000, 200000}, { number = Config.airPitchStrength })
                             if airPitchStrength.numberChanged() then
                                 Config.airPitchStrength:set(airPitchStrength.state.number:get())
                             end
                         elseif i  == "powerSlideEnabled" then
-                            keybindButton("Power Slide Left Keybind", Config.powerSlideLeftKeybind)
-                            keybindButton("Power Slide Right Keybind", Config.powerSlideRightKeybind)
+                            keybindWidget("Power Slide Left", Config.powerSlideLeftKeybind)
+                            keybindWidget("Power Slide Right", Config.powerSlideRightKeybind)
 
                             local powerSlideStrength = Iris.SliderNum({ "Power Slide Strength" , 10000, 200, 50000}, { number = Config.powerSlideStrength })
                             if powerSlideStrength.numberChanged() then
@@ -1872,9 +1974,12 @@ end
 
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
     if not gameProcessedEvent then
-        local validWindowKeyCode = Enum.KeyCode[Config.windowKeyCode:get()]
-        if validWindowKeyCode then
-            if input.KeyCode == validWindowKeyCode then
+        for _, keyCodeName in ipairs(Config.windowKeyCode:get()) do
+            if keyCodeName == nil or keyCodeName == "" or keyCodeName == "None" then
+                continue
+            end
+            local keyCode = Enum.KeyCode[keyCodeName]
+            if keyCode and input.KeyCode == keyCode then
                 Config.showMainWindow:set(not Config.showMainWindow:get())
             end
         end
