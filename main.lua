@@ -203,7 +203,7 @@ genv.Config = {
         "LeftShift";
     });
     ["airbrakeKeybind"] = Iris.State({ -- To-do (not even started yet)
-        "LeftCtrl";
+        "LeftControl";
     });
     ["nitrous"] = Iris.State(100);
     ["airbrake"] = Iris.State(0.005);  -- Range 0 to 1 (0.1 is slow stop, 0.9 is almost instant)
@@ -259,6 +259,40 @@ genv.Config = {
         };
     };
 }
+
+local function isKeybindActive(keycodeName: string)
+    local keycode = Enum.KeyCode[keycodeName]
+    if not keycode then
+        warn("Invalid keycode name: " .. keycodeName)
+        return false
+    end
+    local thumbstickName = keycodeName:match("Thumbstick[12]")
+    if thumbstickName then
+        local prefixLength = string.len(thumbstickName)
+        local dir = keycodeName:sub(prefixLength + 1)
+        local input = UserInputService:GetGamepadState(Enum.UserInputType.Gamepad1)
+
+        for _, obj in ipairs(input) do
+            if obj.KeyCode.Name == thumbstickName then
+                local x, y = obj.Position.X, obj.Position.Y
+                local deadzone = 0.4
+
+                if dir == "Left" and x < -deadzone then
+                    return true
+                elseif dir == "Right" and x > deadzone then
+                    return true
+                elseif dir == "Up" and y > deadzone then
+                    return true
+                elseif dir == "Down" and y < -deadzone then
+                    return true
+                end
+            end
+        end
+    else
+        return UserInputService:IsKeyDown(keycode)
+    end
+    return false
+end
 
 local SelectableCategories = {
     [1] = "None";
@@ -677,13 +711,30 @@ local function ghostriderEnabledChanged(enabled)
 
                 if not targetPart then return end
 
+                local boosting = false
+                local braking = false
+
+                for _, keyCodeName in ipairs(Config.nitrousKeybind:get()) do
+                    if isKeybindActive(keyCodeName) then
+                        boosting = true
+                        break
+                    end
+                end
+
+                for _, keyCodeName in ipairs(Config.airbrakeKeybind:get()) do
+                    if isKeybindActive(keyCodeName) then
+                        braking = true
+                        break
+                    end
+                end
+
                 -- BOOST LOGIC (Left Shift)
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                if boosting then
                     targetPart:ApplyImpulse(targetPart.CFrame.LookVector * Vector3.new(intens, intens, intens))
                 end
 
                 -- SMOOTH BRAKE LOGIC (Left Control)
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                if braking then
                     -- We 'Lerp' the current velocity toward a zero vector
                     -- This creates a "Tween" effect for physics
                     targetPart.AssemblyLinearVelocity = targetPart.AssemblyLinearVelocity:Lerp(Vector3.zero, brakePower)
@@ -775,23 +826,28 @@ local function rocketLeagueControlsChanged(controls)
                     targetPart = subject
                 end
 
-                if not targetPart then return end
-                
-                for _, k in ipairs(keybinds) do
+                if not targetPart then
+                    return
+                end
+                for _, k in pairs(keybinds) do
                     if k[1] ~= true then
                         continue
                     end
                     local keyCodeList = k[2]
+                    local exit = false
                     for _, keyCodeName in ipairs(keyCodeList) do
+                        if exit then
+                            continue
+                        end
                         if keyCodeName == nil or keyCodeName == "" or keyCodeName == "None" then
                             continue
                         end
                         local keyCode = Enum.KeyCode[keyCodeName]
                         if not keyCode then
+                            warn("Invalid keycode name: " .. keyCodeName)
                             continue
                         end
                         local dir = k[3]
-                        if not dir then
                             continue
                         end
                         local strength = k[4]
@@ -806,7 +862,8 @@ local function rocketLeagueControlsChanged(controls)
                         if mustnt ~= nil and UserInputService:IsKeyDown(mustnt) == true then
                             continue
                         end
-                        if UserInputService:IsKeyDown(keyCode) then
+                        if isKeybindActive(keyCodeName) then
+                            exit = true
                             targetPart:ApplyAngularImpulse(targetPart.CFrame[dir] * strength)
                         end
                     end
@@ -1106,7 +1163,7 @@ local function textAndHelpMarker(text: string, helpText: string)
     Iris.End()
 end
 
-local waiting: RBXScriptConnection? = nil
+local waiting = nil
 local function keybindButton(state: {[number]: string?}, index: number)
     -- the button has a clicked event, returning true when it is pressed
     local keybindingArray = state:get()
@@ -1117,51 +1174,85 @@ local function keybindButton(state: {[number]: string?}, index: number)
     if Iris.Button({currentKeyCodeName}).clicked() then
         -- run code if we click the button
         if not waiting then
-            waiting = UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
-                if not gameProcessedEvent then
-                    local newKeyCodeName = input and input.KeyCode and input.KeyCode.Name or nil
-                    if newKeyCodeName then
-                        if newKeyCodeName == Enum.KeyCode.Unknown.Name or newKeyCodeName == Enum.KeyCode.Escape.Name or newKeyCodeName == Enum.KeyCode.Return.Name then
-                            -- not usable keybinds, set to nil instead of the actual key
-                            newKeyCodeName = ""
-                        elseif newKeyCodeName == Enum.KeyCode.Thumbstick1.Name or newKeyCodeName == Enum.KeyCode.Thumbstick2.Name then
-                            -- append 4 direction flags to the keybind name
-                            local thumbstickVector = input.Position
-                            local x, y = thumbstickVector.X, thumbstickVector.Y
-                            -- Deadzone check to avoid drift
-                            local deadzone = 0.1
-                            if math.abs(x) < deadzone then x = 0 end
-                            if math.abs(y) < deadzone then y = 0 end
-                            local thumbstickName = newKeyCodeName
-                            if thumbstickVector.X < -deadzone then
-                                newKeyCodeName = thumbstickName.."Left"
-                            elseif thumbstickVector.X > deadzone then
-                                newKeyCodeName = thumbstickName.."Right"
-                            end
-                            if thumbstickVector.Y < -deadzone then
-                                newKeyCodeName = thumbstickName.."Down"
-                            elseif thumbstickVector.Y > deadzone then
-                                newKeyCodeName = thumbstickName.."Up"
-                            end
-                        end
-                        if newKeyCodeName == Enum.KeyCode.Thumbstick1.Name or newKeyCodeName == Enum.KeyCode.Thumbstick2.Name then
-                            -- If the input is a thumbstick with no direction (e.g., just pressed without moving), treat it as nil
-                            newKeyCodeName = ""
-                        end
-                        if newKeyCodeName ~= currentKeyCodeName then
-                            local array = state:get() or {}
-                            array[index] = newKeyCodeName
-                            state:set(array)
-                            
-                            if waiting then
-                                if waiting.Connected then
-                                    waiting:Disconnect()
-                                end
-                                waiting = nil
-                            end
-                        end
-                    end
+            waiting = {}
+
+            -- Disconnect helper
+            local function stopWaiting()
+                if waiting.began and waiting.began.Connected then waiting.began:Disconnect() end
+                if waiting.changed and waiting.changed.Connected then waiting.changed:Disconnect() end
+                waiting = nil
+            end
+
+            -- Handle normal buttons (keyboard, mouse, gamepad buttons)
+            waiting.began = UserInputService.InputBegan:Connect(function(input)
+                local code = input.KeyCode
+                local name = code and code.Name or nil
+
+                if not name then return end
+
+                -- Reject unusable keys
+                if name == "Unknown" or name == "Escape" or name == "Return" then
+                    name = ""
                 end
+
+                -- Reject thumbstick clicks (we only want directions)
+                if name == "Thumbstick1" or name == "Thumbstick2" then
+                    -- ignore here; handled in InputChanged
+                    return
+                end
+
+                -- Save keybind
+                if name ~= currentKeyCodeName then
+                    local array = state:get() or {}
+                    array[index] = name
+                    state:set(array)
+                end
+
+                stopWaiting()
+            end)
+
+            -- Handle thumbstick movement
+            waiting.changed = UserInputService.InputChanged:Connect(function(input)
+                if input.UserInputType ~= Enum.UserInputType.Gamepad1 then return end
+
+                local code = input.KeyCode
+                if code ~= Enum.KeyCode.Thumbstick1 and code ~= Enum.KeyCode.Thumbstick2 then
+                    return
+                end
+
+                local vec = input.Position
+                local x, y = vec.X, vec.Y
+                local deadzone = 0.4
+
+                -- Deadzone
+                if math.abs(x) < deadzone and math.abs(y) < deadzone then
+                    return
+                end
+
+                local base = code.Name
+                local direction = nil
+
+                -- Determine direction
+                if math.abs(x) > math.abs(y) then
+                    if x > deadzone then direction = "Right"
+                    elseif x < -deadzone then direction = "Left" end
+                else
+                    if y > deadzone then direction = "Up"
+                    elseif y < -deadzone then direction = "Down" end
+                end
+
+                if not direction then return end
+
+                local finalName = base .. direction
+
+                -- Save keybind
+                if finalName ~= currentKeyCodeName then
+                    local array = state:get() or {}
+                    array[index] = finalName
+                    state:set(array)
+                end
+
+                stopWaiting()
             end)
         end
     end
