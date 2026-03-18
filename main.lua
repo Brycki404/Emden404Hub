@@ -79,37 +79,8 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
---Check Executor Has Global Function
-function genv.CEHGF(name: string): boolean
-    if genv[name] and type(genv[name]) == "function" then
-        return true
-    end
-    return false
-end
-
-genv.EXECUTOR_FILING_FUNCTIONS = {
-    "readfile";
-    "listfiles";
-    "writefile";
-    "makefolder";
-    "appendfile";
-    "isfile";
-    "isfolder";
-    "delfile";
-    "delfolder";
-    "loadfile";
-    "dofile";
-}
-
-genv.EXECUTOR_FILING_ENABLED = true
-for i, name in ipairs(EXECUTOR_FILING_FUNCTIONS) do
-    if not CEHGF(name) then
-        EXECUTOR_FILING_ENABLED = false
-        warn("Executor does not support file functions. File saving/loading features will be disabled. Missing function: " .. name)
-        break
-    end
-end
-
+local SCRIPT_DIRECTORY_PATH = nil
+local CONFIG_DIRECTORY_PATH = nil
 if EXECUTOR_FILING_ENABLED then
     SCRIPT_DIRECTORY_PATH = SCRIPT_NAME .. "_" .. ver
     makefolder(SCRIPT_DIRECTORY_PATH)
@@ -173,92 +144,132 @@ local initTracerOrigin = table.find(SELECTABLE_TRACER_ORIGINS, TRACER_ORIGINS.Ce
 local initTracerTarget = table.find(SELECTABLE_TRACER_TARGETS, TRACER_TARGETS.Bottom)
 local initHealthDisplayType = table.find(SELECTABLE_HEALTH_DISPLAY_TYPES, HEALTH_DISPLAY_TYPES["Vertical Bar"])
 
-genv.Config = {
-    ["showMainWindow"] = Iris.State(true);
-    ["showBackground"] = Iris.State(false);
-    ["backgroundColor"] = Iris.State(Color3.fromRGB(115, 140, 152));
-    ["backgroundTransparency"] = Iris.State(0);
-    ["showRuntimeInfo"] = Iris.State(false);
-    ["showStyleEditor"] = Iris.State(false);
-    ["showDebugWindow"] = Iris.State(false);
-    --Referring to Iris' GlobalConfig:
-    ["IrisSizingConfig"] = Iris.State({});
-    ["IrisColorsConfig"] = Iris.State({});
-    ["IrisFontsConfig"] = Iris.State({});
+function getIrisStatesRecursively(IrisTable)
+    local configTable = {}
+    for index, value in pairs(IrisTable) do
+        if type(value) == "table" and type(value.get) == "function" and type(value.set) == "function" then
+            local got = value:get()
+            if type(got) == "table" then
+                local temp = deepCopy(got)
+                temp.IS_IRIS_TABLE_STATE = true
+                configTable[index] = temp
+            else
+                configTable[index] = got
+            end
+        elseif type(value) == "table" then
+            configTable[index] = getIrisStatesRecursively(value)
+        end
+    end
+    return configTable
+end
 
-    ["windowKeyCode"] = Iris.State({"F3"});
+local function SaveIrisConfig(path: string)
+    if not EXECUTOR_FILING_ENABLED then
+        warn("Cannot save config, executor does not support file functions.")
+        return
+    end
 
-    ["antis"] = Iris.State({
-        ["antiCuffEnabled"] = false;
-        ["antiRagdollEnabled"] = false;
-        ["antiTazerEnabled"] = false;
-        ["antiHackBypassEnabled"] = false;
-    });
+    local ConfigTable = getIrisStatesRecursively(Config)
+    if not ConfigTable then
+        warn("Failed to get config table.")
+        return
+    end
+    local success, err = pcall(function()
+        ConfigLibrary:SaveConfig(path, ConfigTable)
+    end)
+    if not success and err then
+        warn("Error saving config: " .. tostring(err))
+    end
+end
 
-    ["carDamageDisabled"] = Iris.State(false);
-    ["vehicleNoclipEnabled"] = Iris.State(false);
+function setIrisStatesRecursively(IrisTable, Overwrite)
+    for index, ovalue in pairs(Overwrite) do
+        if ovalue == nil then
+            warn("What? This shouldn't be happening... Config value for " .. index .. " is nil, skipping this setting to avoid breaking it.")
+            continue
+        end
+        if index == "IS_IRIS_TABLE_STATE" then
+            continue
+        end
 
-    ["ghostriderEnabled"] = Iris.State(false);
-    ["nitrousKeybind"] = Iris.State({ -- To-do (not even started yet)
-        "LeftShift";
-    });
-    ["airbrakeKeybind"] = Iris.State({ -- To-do (not even started yet)
-        "LeftControl";
-    });
-    ["nitrous"] = Iris.State(100);
-    ["airbrake"] = Iris.State(0.005);  -- Range 0 to 1 (0.1 is slow stop, 0.9 is almost instant)
+        local value = IrisTable[index]
+        if value == nil then
+            -- State doesn't exist in current config, add it in so it doesn't get lost when saving/loading configs that don't have newer settings
+            if type(ovalue) == "table" then
+                local temp = deepCopy(ovalue)
+                temp.IS_IRIS_TABLE_STATE = nil
+                if ovalue.IS_IRIS_TABLE_STATE == true then
+                    IrisTable[index] = Iris.State(temp)
+                else
+                    IrisTable[index] = {}
+                    setIrisStatesRecursively(IrisTable[index], temp)
+                end
+            else
+                IrisTable[index] = Iris.State(ovalue)
+            end
+        elseif type(value) == "table" then
+            -- all states are tables, but not all tables are states, so we have to check if it is a state or just a regular table
+            -- State exists in current config, just update the value so it gets saved in the config file. This also allows for loading older configs that don't have newer settings without breaking them by removing those settings, since it will just keep the current value for those settings instead of trying to set them to nil or something.
 
-    ["rocketLeagueControls"] = Iris.State({
-        ["airRollEnabled"] = false;
-        ["airPitchEnabled"] = false;
-        ["powerSlideEnabled"] = false;
-    });
-    ["airRollLeftKeybind"] = Iris.State({
-        "R";
-    });
-    ["airRollRightKeybind"] = Iris.State({
-        "T";
-    });
-    ["airPitchUpKeybind"] = Iris.State({
-        "F";
-    });
-    ["airPitchDownKeybind"] = Iris.State({
-        "V";
-    });
-    ["powerSlideLeftKeybind"] = Iris.State({
-        "A";
-    });
-    ["powerSlideRightKeybind"] = Iris.State({
-        "D";
-    });
-    ["airRollStrength"] = Iris.State(50000); -- Degrees
-    ["airPitchStrength"] = Iris.State(50000); -- Degrees
-    ["powerSlideStrength"] = Iris.State(50000); -- Degrees
+            if (type(value.get) == "function" and type(value.set) == "function") then
+                -- is a state table, so we can just set the value
+                local got = value:get()
+                if got and type(got) == "table" then
+                    if index == "antis" then
+                        print("antis is correctly being detected as a state table with a table value, nice.")
+                        print(repr(ovalue, reprSettings))
+                    end
+                    local temp = deepCopy(ovalue)
+                    temp.IS_IRIS_TABLE_STATE = nil
+                    IrisTable[index]:set(temp)
+                else
+                    if index == "antis" then
+                        print("antis is NOT being detected as a state table with a table value, wtf? Value is: ", got)
+                    end
+                    IrisTable[index]:set(ovalue)
+                end
+            else
+                -- is table but not state, so we have to go deeper
+                if type(ovalue) == "table" then
+                    local temp = deepCopy(ovalue)
+                    temp.IS_IRIS_TABLE_STATE = nil
+                    if ovalue.IS_IRIS_TABLE_STATE == true then
+                        IrisTable[index] = Iris.State(temp)
+                    else
+                        IrisTable[index] = {}
+                        setIrisStatesRecursively(IrisTable[index], temp)
+                    end
+                else
+                    warn("Config value for " .. index .. " is not a table, but the current config value is a table. Skipping this setting to avoid breaking it.")
+                end
+            end
+        end
+    end
+    return true
+end
 
-    ["ESP"] = {
-        ["MasterMaxRenderDistance"] = Iris.State(20000);
-        ["MasterShapes"] = Iris.State(true);
-        ["MasterText"] = Iris.State(true);
-        ["MasterTracers"] = Iris.State(false);
-        ["Categories"] = {
-            ["Player"] = {
-                ["MaxRenderDistance"] = Iris.State(20000);
-                ["Shapes"] = Iris.State(true);
-                ["Text"] = Iris.State(true);
-                ["Tracers"] = Iris.State(false);
-                ["Color"] = Iris.State(Color3.new(1, 1, 1));
-                ["Transparency"] = Iris.State(0);
-                ["ESPType"] = Iris.State(initESPType);
-                ["TracerOrigin"] = Iris.State(initTracerOrigin);
-                ["TracerTarget"] = Iris.State(initTracerTarget);
+local function LoadIrisConfig(path: string)
+    if not EXECUTOR_FILING_ENABLED then
+        warn("Cannot load config, executor does not support file functions.")
+        return
+    end
 
-                ["MaxHealthDistance"] = Iris.State(300);
-                ["HealthDisplayType"] = Iris.State(initHealthDisplayType);
-                ["DisplayHealthText"] = Iris.State(true);
-            };
-        };
-    };
-}
+    local ConfigTable = nil
+    local success, err = pcall(function()
+        ConfigTable = ConfigLibrary:LoadConfig(path)
+    end)
+    if not success and err then
+        warn("Error loading config: " .. tostring(err))
+    elseif success then
+        -- Apply loaded config to current state
+        local applySuccess, applyErr = pcall(function()
+            setIrisStatesRecursively(Config, ConfigTable)
+        end)
+        if not applySuccess and applyErr then
+            warn("Error applying config: " .. tostring(applyErr))
+        end
+    end
+end
 
 local function isKeybindActive(keycodeName: string)
     local keycode = Enum.KeyCode[keycodeName]
@@ -293,6 +304,116 @@ local function isKeybindActive(keycodeName: string)
     end
     return false
 end
+
+local DefaultConfig = {
+    ["showMainWindow"] = true;
+    ["showBackground"] = false;
+    ["backgroundColor"] = Color3.fromRGB(115, 140, 152);
+    ["backgroundTransparency"] = 0;
+    ["showRuntimeInfo"] = false;
+    ["showStyleEditor"] = false;
+    ["showDebugWindow"] = false;
+    --Referring to Iris' GlobalConfig:
+    ["IrisSizingConfig"] = {
+        IS_IRIS_TABLE_STATE = true;
+    };
+    ["IrisColorsConfig"] = {
+        IS_IRIS_TABLE_STATE = true;
+    };
+    ["IrisFontsConfig"] = {
+        IS_IRIS_TABLE_STATE = true;
+    };
+
+    ["windowKeyCode"] = {
+        IS_IRIS_TABLE_STATE = true;
+        "F3"
+    };
+
+    ["antis"] = {
+        IS_IRIS_TABLE_STATE = true;
+        ["antiCuffEnabled"] = false;
+        ["antiRagdollEnabled"] = false;
+        ["antiTazerEnabled"] = false;
+        ["antiHackBypassEnabled"] = false;
+    };
+
+    ["carDamageDisabled"] = false;
+    ["vehicleNoclipEnabled"] = false;
+
+    ["ghostriderEnabled"] = false;
+    ["nitrousKeybind"] = { -- To-do (not even started yet)
+        IS_IRIS_TABLE_STATE = true;
+        "LeftShift";
+    };
+    ["airbrakeKeybind"] = { -- To-do (not even started yet)
+        IS_IRIS_TABLE_STATE = true;
+        "LeftControl";
+    };
+    ["nitrous"] = 100;
+    ["airbrake"] = 0.005;  -- Range 0 to 1 (0.1 is slow stop, 0.9 is almost instant)
+
+    ["rocketLeagueControls"] = {
+        IS_IRIS_TABLE_STATE = true;
+        ["airRollEnabled"] = false;
+        ["airPitchEnabled"] = false;
+        ["powerSlideEnabled"] = false;
+    };
+    ["airRollLeftKeybind"] = {
+        IS_IRIS_TABLE_STATE = true;
+        "R";
+    };
+    ["airRollRightKeybind"] = {
+        IS_IRIS_TABLE_STATE = true;
+        "T";
+    };
+    ["airPitchUpKeybind"] = {
+        IS_IRIS_TABLE_STATE = true;
+        "F";
+    };
+    ["airPitchDownKeybind"] = {
+        IS_IRIS_TABLE_STATE = true;
+        "V";
+    };
+    ["powerSlideLeftKeybind"] = {
+        IS_IRIS_TABLE_STATE = true;
+        "A";
+    };
+    ["powerSlideRightKeybind"] = {
+        IS_IRIS_TABLE_STATE = true;
+        "D";
+    };
+    ["airRollStrength"] = 50000; -- Degrees
+    ["airPitchStrength"] = 50000; -- Degrees
+    ["powerSlideStrength"] = 50000; -- Degrees
+
+    ["ESP"] = {
+        ["MasterMaxRenderDistance"] = 20000;
+        ["MasterShapes"] = true;
+        ["MasterText"] = true;
+        ["MasterTracers"] = false;
+        ["Categories"] = {
+            ["Player"] = {
+                ["MaxRenderDistance"] = 20000;
+                ["Shapes"] = true;
+                ["Text"] = true;
+                ["Tracers"] = false;
+                ["Color"] = Color3.new(1, 1, 1);
+                ["Transparency"] = 0;
+                ["ESPType"] = initESPType;
+                ["TracerOrigin"] = initTracerOrigin;
+                ["TracerTarget"] = initTracerTarget;
+
+                ["MaxHealthDistance"] = 300;
+                ["HealthDisplayType"] = initHealthDisplayType;
+                ["DisplayHealthText"] = true;
+            };
+        };
+    };
+}
+
+local Config = {}
+genv.Config = Config
+setIrisStatesRecursively(Config, DefaultConfig)
 
 local SelectableCategories = {
     [1] = "None";
@@ -848,6 +969,7 @@ local function rocketLeagueControlsChanged(controls)
                             continue
                         end
                         local dir = k[3]
+                        if not dir then
                             continue
                         end
                         local strength = k[4]
@@ -1365,14 +1487,32 @@ local function debugPanel()
     Iris.End()
 end
 
+local choosingConfig_open = Iris.State(false);
+local choosingConfig_save = Iris.State(false);
+local typingCustomConfig_save = Iris.State(false);
+
 local function mainMenuBar()
     Iris.MenuBar()
     do
         Iris.Menu({ "Configs" })
         do
-            Iris.MenuItem({ "New" })
-            Iris.MenuItem({ "Open" })
-            Iris.MenuItem({ "Save" })
+            local newMenuItem = Iris.MenuItem({ "New" })
+            if newMenuItem.clicked() then
+                setIrisStatesRecursively(Config, DefaultConfig)
+            end
+            if EXECUTOR_FILING_ENABLED then
+                local openMenuItem = Iris.MenuItem({ "Open" })
+                local saveMenuItem = Iris.MenuItem({ "Save" })
+                if not choosingConfig_open:get() and not choosingConfig_save:get() and not typingCustomConfig_save:get() then
+                    if openMenuItem.clicked() then
+                        choosingConfig_open:set(true)
+                    elseif saveMenuItem.clicked() then
+                        choosingConfig_save:set(true)
+                    end
+                end
+            else
+                Iris.Text({ "Config saving/loading is not supported in this executor." })
+            end
         end
         Iris.End()
 
@@ -1914,6 +2054,7 @@ Iris:Connect(function()
                 for i, bool: boolean in pairs(Config.rocketLeagueControls:get()) do
                     local ConfigDisplayName = ConfigDisplayNames[i] or i
                     local checkbox = Iris.Checkbox({ConfigDisplayName}, { isChecked = Iris.WeakState(bool) })
+                    checkbox.state.isChecked:set(bool)
                     if checkbox.checked() or checkbox.unchecked() then
                         local newBool = checkbox.state.isChecked:get()
                         local rocketLeagueControls = Config.rocketLeagueControls:get()
@@ -2000,9 +2141,11 @@ Iris:Connect(function()
 
             Iris.Tab({"Other"})
             do
+                print("antis:")
                 for i, bool: boolean in pairs(Config.antis:get()) do
                     local ConfigDisplayName = ConfigDisplayNames[i] or i
                     local checkbox = Iris.Checkbox({ConfigDisplayName}, { isChecked = Iris.WeakState(bool) })
+                    checkbox.state.isChecked:set(bool)
                     if checkbox.checked() or checkbox.unchecked() then
                         local newBool = checkbox.state.isChecked:get()
                         local antis = Config.antis:get()
@@ -2041,6 +2184,89 @@ Iris:Connect(function()
     end
     if Config.showStyleEditor.value then
         styleEditor()
+    end
+
+    if EXECUTOR_FILING_ENABLED then
+        if choosingConfig_open:get() then
+            local chooseWindow = Iris.Window({ "Open Config" }, {
+                size = Iris.State(Vector2.new(300, 200));
+                isOpened = choosingConfig_open;
+            })
+            if chooseWindow.state.isOpened:get() and chooseWindow.state.isUncollapsed:get() then
+                local files = listfiles(CONFIG_DIRECTORY_PATH)
+
+                for _, filePath in ipairs(files) do
+                    -- Extract just the filename (no path)
+                    local fileName = filePath:match("([^/\\]+)$")
+                    -- Only continue if it's a .json file
+                    if fileName and fileName:match("%.json$") then
+                        fileName = fileName:sub(1, -6) -- Remove the .json extension for display
+                        if Iris.Button({ fileName }).clicked() then
+                            choosingConfig_open:set(false)
+                            LoadIrisConfig(filePath)
+                        end
+                    end
+                end
+            end
+            Iris.End()
+        elseif choosingConfig_save:get() then
+            local chooseWindow = Iris.Window({ "Save Config" }, {
+                size = Iris.State(Vector2.new(300, 200));
+                isOpened = choosingConfig_save;
+            })
+            if chooseWindow.state.isOpened:get() and chooseWindow.state.isUncollapsed:get() then
+                local files = listfiles(CONFIG_DIRECTORY_PATH)
+
+                for _, filePath in ipairs(files) do
+                    -- Extract just the filename (no path)
+                    local fileName = filePath:match("([^/\\]+)$")
+                    -- Only continue if it's a .json file
+                    if fileName and fileName:match("%.json$") then
+                        fileName = fileName:sub(1, -6) -- Remove the .json extension for display
+                        if Iris.Button({ fileName }).clicked() then
+                            choosingConfig_save:set(false)
+                            SaveIrisConfig(filePath)
+                        end
+                    end
+                end
+
+                if Iris.Button({ "[Save To New Config]" }).clicked() then
+                    choosingConfig_save:set(false)
+                    typingCustomConfig_save:set(true)
+                end
+            end
+            Iris.End()
+        end
+        if typingCustomConfig_save.value then
+            local promptWindow = Iris.Window({ "Enter Config Name" }, { isOpened = typingCustomConfig_save })
+            -- the promptWindow has opened and uncollapsed states, which return booleans
+            if promptWindow.state.isOpened:get() and promptWindow.state.isUncollapsed:get() then
+                local textInputWidget = nil
+                Iris.SameLine()
+                do
+                    Iris.Text({ "Enter a Config Name: " })
+                    textInputWidget = Iris.InputText({ "" }, { text = Iris.WeakState("Default") })
+                end
+                Iris.End()
+                Iris.SameLine()
+                do
+                    local continueButton = Iris.Button({ "Continue" })
+                    local cancelButton = Iris.Button({ "Cancel" })
+                    if continueButton.clicked() then
+                        local configName = textInputWidget.state.text:get()
+                        if configName and configName ~= "" then
+                            SaveIrisConfig(CONFIG_DIRECTORY_PATH .. "\\" .. configName .. ".json")
+                        end
+                        typingCustomConfig_save:set(false)
+                    end
+                    if cancelButton.clicked() then
+                        typingCustomConfig_save:set(false)
+                    end
+                end
+                Iris.End()
+            end
+            Iris.End()
+        end
     end
 end)
 
@@ -2382,7 +2608,7 @@ do
         
         local MyDistanceSquared = ESP.GetMyDistanceSquared(itsPos)
         if MyDistanceSquared then
-            local MaxRenderDistanceSquared = math.min(Config.ESP.MasterMaxRenderDistance:get() or 20000, (thisConfig ~= nil and thisConfig.MaxRenderDistance ~= nil and thisConfig.MaxRenderDistance:get()) or 20000)
+            local MaxRenderDistanceSquared = math.min(Config.ESP.MasterMaxRenderDistance:get() or 20000, (thisConfig ~= nil and thisConfig.MaxRenderDistance ~= nil and type(thisConfig.MaxRenderDistance:get()) == "number" and thisConfig.MaxRenderDistance:get()) or 20000)
             if MaxRenderDistanceSquared and type(MaxRenderDistanceSquared) == "number" then
                 --Unsquared, so Square it
                 MaxRenderDistanceSquared = MaxRenderDistanceSquared * MaxRenderDistanceSquared
@@ -2391,7 +2617,7 @@ do
                 MaxRenderDistanceSquared = math.huge
                 calculations.FailedRenderDistance = false
             end
-            local MaxHealthDistanceSquared = (thisConfig ~= nil and thisConfig.MaxHealthDistance ~= nil and thisConfig.MaxHealthDistance:get() or 300)
+            local MaxHealthDistanceSquared = (thisConfig ~= nil and thisConfig.MaxHealthDistance ~= nil and type(thisConfig.MaxHealthDistance:get()) == "number" and thisConfig.MaxHealthDistance:get() or 300)
             if MaxHealthDistanceSquared and type(MaxHealthDistanceSquared) == "number" then
                 --Unsquared, so Square it
                 MaxHealthDistanceSquared = MaxHealthDistanceSquared * MaxHealthDistanceSquared
