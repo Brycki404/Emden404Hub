@@ -1,9 +1,9 @@
---For clearing up underline spam in Visual Studio Code
---local getgenv, Iris, ESP, BetterLib, Get, FormatSemVer, makefolder, CEHGF, EXECUTOR_FILING_FUNCTIONS, Config, FormatHours, CountList
+-- For clearing up underline spam in Visual Studio Code
+-- local getgenv, Iris, ESP, BetterLib, Get, FormatSemVer, makefolder, CEHGF, EXECUTOR_FILING_FUNCTIONS, EXECUTOR_FILING_ENABLED, FormatHours, CountList, deepCopy, ConfigLibrary, CancelLerpTeleport, LerpTeleport, Lerp, GetDurationFromDistance, writefile, isfile, readfile, listfiles
 
 local SCRIPT_NAME = "Emden404Hub"
 local SCRIPT_VERSION = {
-    --Semantic Versioning
+    -- Semantic Versioning
     Major = 1;
     Minor = 1;
     Patch = 7;
@@ -34,6 +34,18 @@ end
 -- Loaded Dependencies!
 
 -- Generic Helpers
+function genv.Lerp(a: Vector3, b: Vector3, t: number): Vector3
+    return a + (b - a) * t
+end
+
+function genv.GetDurationFromDistance(distance: number, maxSpeed: number): number
+    if maxSpeed <= 0 then
+        return 0
+    end
+
+    return distance / maxSpeed
+end
+
 function genv.FormatHours(seconds: number): string
     seconds = math.max(0, math.floor(seconds)) -- clamp + remove decimals
 
@@ -144,6 +156,9 @@ local initTracerOrigin = table.find(SELECTABLE_TRACER_ORIGINS, TRACER_ORIGINS.Ce
 local initTracerTarget = table.find(SELECTABLE_TRACER_TARGETS, TRACER_TARGETS.Bottom)
 local initHealthDisplayType = table.find(SELECTABLE_HEALTH_DISPLAY_TYPES, HEALTH_DISPLAY_TYPES["Vertical Bar"])
 
+local Config = {}
+genv.Config = Config
+
 function getIrisStatesRecursively(IrisTable)
     local configTable = {}
     for index, value in pairs(IrisTable) do
@@ -215,17 +230,10 @@ function setIrisStatesRecursively(IrisTable, Overwrite)
                 -- is a state table, so we can just set the value
                 local got = value:get()
                 if got and type(got) == "table" then
-                    if index == "antis" then
-                        print("antis is correctly being detected as a state table with a table value, nice.")
-                        print(repr(ovalue, reprSettings))
-                    end
                     local temp = deepCopy(ovalue)
                     temp.IS_IRIS_TABLE_STATE = nil
                     IrisTable[index]:set(temp)
                 else
-                    if index == "antis" then
-                        print("antis is NOT being detected as a state table with a table value, wtf? Value is: ", got)
-                    end
                     IrisTable[index]:set(ovalue)
                 end
             else
@@ -411,8 +419,6 @@ local DefaultConfig = {
     };
 }
 
-local Config = {}
-genv.Config = Config
 setIrisStatesRecursively(Config, DefaultConfig)
 
 local SelectableCategories = {
@@ -420,6 +426,141 @@ local SelectableCategories = {
     [2] = "Player";
 };
 local SelectedCategory = Iris.State(1);
+
+local function getMySeat(): Seat?
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return nil end
+    if not hum.SeatPart then return nil end
+    return hum.SeatPart
+end
+
+local function getMyVehicleModel(): Model?
+    local seat = getMySeat()
+    if not seat then return nil end
+    if seat then
+        local current = seat
+        local vehicleModel = current
+        while current and current.Parent and current.Parent ~= game.Workspace do
+            current = current.Parent
+            if current:IsA("Model") then
+                vehicleModel = current
+            elseif current:IsA("Folder") then
+                break
+            end
+        end
+        return vehicleModel
+    end
+    return nil
+end
+
+local function setEntireVehicleVelocity(vehicleModel: Model, linearVelocity: Vector3?, angularVelocity: Vector3?): boolean
+    if not vehicleModel then
+        vehicleModel = getMyVehicleModel()
+    end
+    if not vehicleModel then
+        return false
+    end
+    if not linearVelocity then linearVelocity = Vector3.zero end
+    if not angularVelocity then angularVelocity = Vector3.zero end
+    if vehicleModel.PrimaryPart then
+        vehicleModel.PrimaryPart.AssemblyLinearVelocity = linearVelocity
+        vehicleModel.PrimaryPart.AssemblyAngularVelocity = angularVelocity
+    else
+        for _, part in ipairs(vehicleModel:GetDescendants()) do
+            if not part:IsA("BasePart") then continue end
+            part.AssemblyLinearVelocity = linearVelocity
+            part.AssemblyAngularVelocity = angularVelocity
+        end
+    end
+    return true
+end
+
+local function moveVehicleTo(vehicleModel: Model, new: Vector3|CFrame): boolean
+     if not vehicleModel then
+        vehicleModel = getMyVehicleModel()
+    end
+    if not vehicleModel then
+        return false
+    end
+    local currentCFrame = vehicleModel:GetPivot()
+    local newCFrame = typeof(new) == "Vector3" and CFrame.new(new) * currentCFrame.Rotation or typeof(new) == "CFrame" and new or nil
+    if not newCFrame then
+        warn("Invalid new position or cframe for moveVehicleTo: " .. tostring(new))
+        return false
+    end
+    vehicleModel:PivotTo(newCFrame)
+    return true
+end
+
+-- Lerp TP
+local CurrentTeleportingConnection = nil
+local TargetPosition = nil
+local Duration = nil
+local Elapsed = nil
+local Alpha = nil
+local TeleportFinishedCallbacks = {}
+
+function genv.CancelLerpTeleport()
+    if CurrentTeleportingConnection then
+        if CurrentTeleportingConnection.Connected then
+            CurrentTeleportingConnection:Disconnect()
+        end
+        CurrentTeleportingConnection = nil
+    end
+    if TargetPosition then
+        TargetPosition = nil
+    end
+end
+
+function genv.LerpTeleport(target: Vector3, duration: number)
+    CancelLerpTeleport()
+
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart or char:FindFirstChild("Head")
+    if not root then return end
+
+    local startPos = root.Position
+    Duration = duration
+    Elapsed = 0
+
+    TargetPosition = target
+
+    CurrentTeleportingConnection = RunService.Heartbeat:Connect(function(dt)
+        char = LocalPlayer.Character
+        if not char then
+            CancelLerpTeleport()
+            return
+        end
+        root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart or char:FindFirstChild("Head")
+        if not root then
+            CancelLerpTeleport()
+            return
+        end
+
+        Elapsed += dt
+        Alpha = math.clamp(Elapsed / Duration, 0, 1)
+
+        local vehicleModel = getMyVehicleModel()
+        if vehicleModel then
+            local newPos = Lerp(startPos, target, Alpha)
+            moveVehicleTo(vehicleModel, newPos)
+        else
+            root.CFrame = CFrame.new(Lerp(startPos, target, Alpha))
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+
+        if Alpha >= 1 then
+            CancelLerpTeleport()
+            for i, callback in pairs(TeleportFinishedCallbacks) do
+                task.spawn(callback)
+            end
+        end
+    end)
+end
 
 -- Dex++
 local dexLoaded = Iris.State(false)
@@ -486,49 +627,30 @@ RunVehicleFling = function()
     local targetPlayer = nil
     local isSpamming = false
 
-    -- ==========================================
-    -- VEHICLE DETECTION
-    -- ==========================================
-    local function getMySeat()
-        local char = LocalPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum and hum.SeatPart then
-                return hum.SeatPart 
-            end
-        end
-        return nil
-    end
+    local linearVelocity = Vector3.new(0, 50, 0)
+    local angularVelocity = Vector3.new(0, 15000, 0)
+    local flingPositioningOffset = Vector3.new(0, 0, 0)
 
-    local function getMyVehicleModel()
-        local seat = getMySeat()
-        if seat then
-            local current = seat
-            while current and current.Parent and current.Parent ~= workspace do
-                current = current.Parent
-                if current:IsA("Model") and (current:FindFirstChild("Chassis") or current:FindFirstChild("Body") or current:FindFirstChild("Seats")) then
-                    return current
-                end
-            end
-            if seat.Parent:IsA("Model") then return seat.Parent end
-        end
-        return nil
-    end
-
-    -- ==========================================
-    -- THE PHYSICS LOOP
-    -- ==========================================
-    RunService.Heartbeat:Connect(function()
-        if isSpamming and targetPlayer and targetPlayer.Character then
-            local carModel = getMyVehicleModel()
-            local seat = getMySeat()
+    RunService.Heartbeat:Connect(function(dt: number)
+        if isSpamming and LocalPlayer and LocalPlayer.Character and targetPlayer and targetPlayer.Character then
+            local vehicleModel = getMyVehicleModel()
             local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-            
-            if carModel and seat and targetRoot then
-                carModel:PivotTo(targetRoot.CFrame)
-                
-                seat.AssemblyLinearVelocity = Vector3.new(0, 50, 0) 
-                seat.AssemblyAngularVelocity = Vector3.new(0, 15000, 0) 
+            local myRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if vehicleModel and targetRoot and myRoot then
+                local s1 = setEntireVehicleVelocity(vehicleModel) -- Stop the car before moving it
+                if not s1 then return end -- Failed to get velocity setter, abort
+
+                local dist = (myRoot.Position - targetRoot.Position).Magnitude
+                local duration = GetDurationFromDistance(dist, 100) -- Assuming 100 studs per second fling speed, adjust as needed
+                local target = targetRoot.Position + flingPositioningOffset
+                local alphaStep = dt/duration
+                local currentPos = vehicleModel:GetPivot().Position
+                local lerpTarget = Lerp(currentPos, target, alphaStep)
+                local s2 = moveVehicleTo(vehicleModel, lerpTarget) -- Move the car towards the target first before setting velocity to make it more likely to fling them even if they're in a vehicle themselves, and to reduce the chances of just launching yourself into the sky instead of towards the target
+                if not s2 then return end -- Failed to set position, abort
+
+                local s3 = setEntireVehicleVelocity(vehicleModel, linearVelocity, angularVelocity) -- Set the velocity after moving the car to try and fling the player better
+                if not s3 then return end -- Failed to set velocity, abort
             end
         end
     end)
@@ -1139,39 +1261,6 @@ do
     end
 
     -- ==========================================
-    -- VEHICLE DETECTION
-    -- ==========================================
-    function getMyBus()
-        local character = LocalPlayer.Character
-        if character then
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.SeatPart then
-                local vehicle = humanoid.SeatPart
-                local busModel = vehicle
-                while vehicle and vehicle.Parent and vehicle.Parent ~= game.Workspace do
-                    vehicle = vehicle.Parent
-                    if vehicle:IsA("Model") then
-                        busModel = vehicle
-                    elseif vehicle:IsA("Folder") then
-                        break
-                    end
-                end
-                return busModel
-            end
-        end
-        return nil
-    end
-
-    function setEntireBusVelocity(bus, linearVelocity)
-        for _, part in ipairs(bus:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.AssemblyLinearVelocity = linearVelocity
-                part.AssemblyAngularVelocity = Vector3.zero
-            end
-        end
-    end
-
-    -- ==========================================
     -- PROMPT DETECTION
     -- ==========================================
     function waitForPromptToClear()
@@ -1197,30 +1286,48 @@ do
     -- ==========================================
     -- CORE LOGIC
     -- ==========================================
-    function executeTeleport(bus, targetCFrame)
-        local rootPart = bus.PrimaryPart or bus:FindFirstChildWhichIsA("BasePart", true)
+    function executeTeleport(bus: Model?, targetCFrame)
+        local myRoot = LocalPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or nil
+        if not myRoot then return end -- Failed to find HumanoidRootPart, abort
+
+        bus = bus or getMyVehicleModel()
+        if not bus then return end
         
-        if rootPart then
-            -- 60 studs back, 3 studs up
-            local backwardOffset = -targetCFrame.LookVector * 60
-            local spawnCFrame = (targetCFrame + backwardOffset) + Vector3.new(0, 3, 0)
-            
-            setEntireBusVelocity(bus, Vector3.zero)
-            bus:PivotTo(spawnCFrame)
-            
+        local s1 = setEntireVehicleVelocity(bus, Vector3.zero)
+        if not s1 then return end -- Failed to get velocity setter, abort
+        
+        -- 60 studs back, 3 studs up
+        local backwardOffset = -targetCFrame.LookVector * 60
+        local spawnCFrame = (targetCFrame + backwardOffset) + Vector3.new(0, 3, 0)
+        local target = spawnCFrame.Position
+        local targetRotation = spawnCFrame.Rotation
+
+        local s2 = moveVehicleTo(bus, CFrame.new(bus:GetPivot().Position) * targetRotation)
+        if not s2 then return end -- Failed to set vehicle rotation, abort
+
+        local function AutoBusUponArrival()
+            -- This function will run once the vehicle reaches the target location
+            -- You can add any additional logic here that should happen after teleporting
             local driveSpeed = targetCFrame.LookVector * 60
-            setEntireBusVelocity(bus, driveSpeed)
-            
+            local s3 = setEntireVehicleVelocity(bus, driveSpeed)
+            if not s3 then return end -- Failed to set drive speed, abort
+
             task.wait(1.5)
-            
+
             -- Hard Brake
-            setEntireBusVelocity(bus, Vector3.zero)
-            
+            local s4 = setEntireVehicleVelocity(bus, Vector3.zero)
+            if not s4 then return end -- Failed to set brake speed, abort
+
             -- NEW: Wait for the game UI to finish before moving to the next stop
             waitForPromptToClear()
+
+            task.wait(1) -- Short buffer after prompt clears
         end
-        
-        task.wait(1) -- Short buffer after prompt clears
+
+        local dist = (myRoot.Position - spawnCFrame.Position).Magnitude
+        local duration = GetDurationFromDistance(dist, 100) -- Assuming 100 studs per second fling speed, adjust as needed
+        TeleportFinishedCallbacks.AutoBusUponArrival = AutoBusUponArrival
+        LerpTeleport(target, duration) -- Move the car above the target to avoid getting stuck in the ground and to make it more likely to fling them even if they're in a vehicle themselves
     end
 end
 
@@ -2030,67 +2137,85 @@ Iris:Connect(function()
                     vehicleNoclipEnabledChanged(newEnabled)
                 end
                 
-                local GhostriderEnabled = Iris.Checkbox({"Ghost Rider Enabled"}, { isChecked = Config.ghostriderEnabled })
-                if GhostriderEnabled.checked() or GhostriderEnabled.unchecked() then
-                    local newEnabled = GhostriderEnabled.state.isChecked:get()
-                    Config.ghostriderEnabled:set(newEnabled)
-                    ghostriderEnabledChanged(newEnabled)
-                end
-
-                if GhostriderEnabled.state.isChecked:get() then
-                    local nitrous = Iris.SliderNum({"Ghost Rider Nitrous", 1, 0, 5000}, { number = Config.nitrous })
-                    if nitrous.numberChanged() then
-                        Config.nitrous:set(nitrous.state.number:get())
+                Iris.Group()
+                do
+                    local GhostriderEnabled = Iris.Checkbox({"Ghost Rider Enabled"}, { isChecked = Config.ghostriderEnabled })
+                    if GhostriderEnabled.checked() or GhostriderEnabled.unchecked() then
+                        local newEnabled = GhostriderEnabled.state.isChecked:get()
+                        Config.ghostriderEnabled:set(newEnabled)
+                        ghostriderEnabledChanged(newEnabled)
                     end
 
-                    local airbrake = Iris.SliderNum({"Ghost Rider Airbrake", 0.001, 0, 1}, { number = Config.airbrake })
-                    if airbrake.numberChanged() then
-                        Config.airbrake:set(airbrake.state.number:get())
+                    if GhostriderEnabled.state.isChecked:get() then
+                        local nitrous = Iris.SliderNum({"Ghost Rider Nitrous Strength", 1, 0, 5000}, { number = Config.nitrous })
+                        if nitrous.numberChanged() then
+                            Config.nitrous:set(nitrous.state.number:get())
+                        end
+                        keybindWidget("Nitrous", Config.nitrousKeybind)
+
+                        local airbrake = Iris.SliderNum({"Ghost Rider Airbrake Strength", 0.001, 0, 1}, { number = Config.airbrake })
+                        if airbrake.numberChanged() then
+                            Config.airbrake:set(airbrake.state.number:get())
+                        end
+                        keybindWidget("Airbrake", Config.airbrakeKeybind)
                     end
                 end
+                Iris.End()
 
                 Iris.SeparatorText({ "Vehicles: This is Rocket League!" })
 
-                for i, bool: boolean in pairs(Config.rocketLeagueControls:get()) do
-                    local ConfigDisplayName = ConfigDisplayNames[i] or i
-                    local checkbox = Iris.Checkbox({ConfigDisplayName}, { isChecked = Iris.WeakState(bool) })
-                    checkbox.state.isChecked:set(bool)
-                    if checkbox.checked() or checkbox.unchecked() then
-                        local newBool = checkbox.state.isChecked:get()
-                        local rocketLeagueControls = Config.rocketLeagueControls:get()
-                        rocketLeagueControls[i] = newBool
-                        Config.rocketLeagueControls:set(rocketLeagueControls)
-                        rocketLeagueControlsChanged(rocketLeagueControls)
-                    end
-
-                    if checkbox.state.isChecked:get() then
-                        if i == "airRollEnabled" then
-                            keybindWidget("Air Roll Left", Config.airRollLeftKeybind)
-                            keybindWidget("Air Roll Right", Config.airRollRightKeybind)
-
-                            local airRollStrength = Iris.SliderNum({ "Air Roll Strength" , 10000, 1000, 100000}, { number = Config.airRollStrength })
-                            if airRollStrength.numberChanged() then
-                                Config.airRollStrength:set(airRollStrength.state.number:get())
+                Iris.Group()
+                do
+                    for i, bool: boolean in pairs(Config.rocketLeagueControls:get()) do
+                        Iris.Group()
+                        do
+                            local ConfigDisplayName = ConfigDisplayNames[i] or i
+                            local checkbox = Iris.Checkbox({ConfigDisplayName}, { isChecked = Iris.State(bool) })
+                            if checkbox.checked() or checkbox.unchecked() then
+                                local newBool = checkbox.state.isChecked:get()
+                                local rocketLeagueControls = Config.rocketLeagueControls:get()
+                                rocketLeagueControls[i] = newBool
+                                Config.rocketLeagueControls:set(rocketLeagueControls)
+                                rocketLeagueControlsChanged(rocketLeagueControls)
+                                bool = newBool
                             end
-                        elseif i == "airPitchEnabled" then
-                            keybindWidget("Air Pitch Up", Config.airPitchUpKeybind)
-                            keybindWidget("Air Pitch Down", Config.airPitchDownKeybind)
-
-                            local airPitchStrength = Iris.SliderNum({ "Air Pitch Strength" , 10000, 1000, 200000}, { number = Config.airPitchStrength })
-                            if airPitchStrength.numberChanged() then
-                                Config.airPitchStrength:set(airPitchStrength.state.number:get())
+                            if checkbox.state.isChecked:get() ~= bool then
+                                warn("Desync detected for " .. i .. "! Checkbox state: " .. tostring(checkbox.state.isChecked:get()) .. " | Config value: " .. tostring(bool))
+                                checkbox.state.isChecked:set(bool)
                             end
-                        elseif i  == "powerSlideEnabled" then
-                            keybindWidget("Power Slide Left", Config.powerSlideLeftKeybind)
-                            keybindWidget("Power Slide Right", Config.powerSlideRightKeybind)
 
-                            local powerSlideStrength = Iris.SliderNum({ "Power Slide Strength" , 10000, 200, 50000}, { number = Config.powerSlideStrength })
-                            if powerSlideStrength.numberChanged() then
-                                Config.powerSlideStrength:set(powerSlideStrength.state.number:get())
+                            if checkbox.state.isChecked:get() then
+                                if i == "airRollEnabled" then
+                                    keybindWidget("Air Roll Left", Config.airRollLeftKeybind)
+                                    keybindWidget("Air Roll Right", Config.airRollRightKeybind)
+
+                                    local airRollStrength = Iris.SliderNum({ "Air Roll Strength" , 10000, 1000, 100000}, { number = Config.airRollStrength })
+                                    if airRollStrength.numberChanged() then
+                                        Config.airRollStrength:set(airRollStrength.state.number:get())
+                                    end
+                                elseif i == "airPitchEnabled" then
+                                    keybindWidget("Air Pitch Up", Config.airPitchUpKeybind)
+                                    keybindWidget("Air Pitch Down", Config.airPitchDownKeybind)
+
+                                    local airPitchStrength = Iris.SliderNum({ "Air Pitch Strength" , 10000, 1000, 200000}, { number = Config.airPitchStrength })
+                                    if airPitchStrength.numberChanged() then
+                                        Config.airPitchStrength:set(airPitchStrength.state.number:get())
+                                    end
+                                elseif i  == "powerSlideEnabled" then
+                                    keybindWidget("Power Slide Left", Config.powerSlideLeftKeybind)
+                                    keybindWidget("Power Slide Right", Config.powerSlideRightKeybind)
+
+                                    local powerSlideStrength = Iris.SliderNum({ "Power Slide Strength" , 10000, 200, 50000}, { number = Config.powerSlideStrength })
+                                    if powerSlideStrength.numberChanged() then
+                                        Config.powerSlideStrength:set(powerSlideStrength.state.number:get())
+                                    end
+                                end
                             end
                         end
+                        Iris.End()
                     end
                 end
+                Iris.End()
             end
             Iris.End()
 
@@ -2108,7 +2233,7 @@ Iris:Connect(function()
                     else
                         autobus_thread = task.spawn(function()
                             while autobus_enabled:get() == true do
-                                local bus = getMyBus()
+                                local bus = getMyVehicleModel()
                                 local nextStopName = LocalPlayer:GetAttribute("LastBusStation")
                                 
                                 if bus and nextStopName then
@@ -2141,34 +2266,96 @@ Iris:Connect(function()
 
             Iris.Tab({"Other"})
             do
-                print("antis:")
-                for i, bool: boolean in pairs(Config.antis:get()) do
-                    local ConfigDisplayName = ConfigDisplayNames[i] or i
-                    local checkbox = Iris.Checkbox({ConfigDisplayName}, { isChecked = Iris.WeakState(bool) })
-                    checkbox.state.isChecked:set(bool)
-                    if checkbox.checked() or checkbox.unchecked() then
-                        local newBool = checkbox.state.isChecked:get()
-                        local antis = Config.antis:get()
-                        antis[i] = newBool
-                        Config.antis:set(antis)
-                        antisChanged(antis)
+                local tpTree = Iris.Tree({ "Lerp Teleporting" })
+                do
+                    if tpTree.state.isUncollapsed:get() then
+                        Iris.Text({ "You can cancel a Lerp Teleport using getgenv().CancelLerpTeleport(),\nby calling a new Lerp Teleport," })
+                        Iris.SameLine()
+                            Iris.Text({ "or by pressing this button:" })
+                            if Iris.Button({"Cancel Current Lerp Teleport"}).clicked() then
+                                if CancelLerpTeleport then
+                                    CancelLerpTeleport()
+                                end
+                            end
+                        Iris.End()
+
+                        if CurrentTeleportingConnection then
+                            local currentTree = Iris.Tree({ "Current Lerp Teleport Status" })
+                            do
+                                if currentTree.state.isUncollapsed:get() then
+                                    local components = {TargetPosition.X, TargetPosition.Y, TargetPosition.Z}
+                                    for i,v in ipairs(components) do
+                                        if v then
+                                            components[i] = math.round(v * 100) / 100
+                                        end
+                                    end
+
+                                    Iris.Text({ string.format("Target Position: (%.2f, %.2f, %.2f)", table.unpack(components)) })
+                                    Iris.Text({ "Progress: " .. string.format("%.2f", (Alpha or 0) * 100) .. "%" })
+                                    Iris.Text({ "Elapsed Time: " .. FormatHours(Elapsed or 0) })
+                                    Iris.Text({ "Total Duration: " .. FormatHours(Duration or 10) })
+                                end
+                            end
+                            Iris.End()
+                        end
+
+                        local howtoTree = Iris.Tree({ "How to use:" })
+                        do
+                            if howtoTree.state.isUncollapsed:get() then
+                                Iris.Text({"Lerp Teleporting is available as a global function: getgenv().LerpTeleport(target: Vector3, duration: number): ()"})
+                                Iris.Text({"You can use it to smoothly teleport your character to a target position over a specified duration."})
+                                Iris.Text({ "Example usage: getgenv().LerpTeleport(Vector3.new(0, 50, 0), 2)" })
+                                Iris.Text({ "\nYou can also use the following global helper function to get the duration for a given distance under a constant travelling speed constraint." })
+                                Iris.Text({ "getgenv().GetDurationFromDistance(distance: number, speed: number): (number)" })
+                                Iris.Text({ "Example usage: getgenv().GetDurationFromDistance(250, 75)" })
+                            end
+                        end
+                        Iris.End()
                     end
                 end
+                Iris.End()
 
-                Iris.SeparatorText({ "Tools" })
-
-                local hitboxExtendTool = Iris.Button({"Extend Hitbox (Melee)"})
-                if hitboxExtendTool.clicked() then
-                    extendToolHitbox()
-                end
-
-                if ak47Tampered == false then
-                    local TamperAK47 = Iris.Button({"Tamper AK47"})
-                    if ak47Tampered == false and TamperAK47.clicked() then
-                        ak47Tampered = true
-                        tamperGun("AK47")
+                local antiTree = Iris.Tree({ "Anti Toggles" })
+                do
+                    if antiTree.state.isUncollapsed:get() then
+                        for i, bool: boolean in pairs(Config.antis:get()) do
+                            local ConfigDisplayName = ConfigDisplayNames[i] or i
+                            local checkbox = Iris.Checkbox({ConfigDisplayName}, { isChecked = Iris.State(bool) })
+                            if checkbox.checked() or checkbox.unchecked() then
+                                local newBool = checkbox.state.isChecked:get()
+                                local antis = Config.antis:get()
+                                antis[i] = newBool
+                                Config.antis:set(antis)
+                                antisChanged(antis)
+                                bool = newBool
+                            end
+                            if checkbox.state.isChecked:get() ~= bool then
+                                warn("Desync detected for " .. i .. "! Checkbox state: " .. tostring(checkbox.state.isChecked:get()) .. " | Config value: " .. tostring(bool))
+                                checkbox.state.isChecked:set(bool)
+                            end
+                        end
                     end
-                end            
+                end
+                Iris.End()
+
+                local toolsTree = Iris.Tree({ "Tools" })
+                do
+                    if toolsTree.state.isUncollapsed:get() then
+                        local hitboxExtendTool = Iris.Button({"Extend Hitbox (Melee)"})
+                        if hitboxExtendTool.clicked() then
+                            extendToolHitbox()
+                        end
+
+                        if ak47Tampered == false then
+                            local TamperAK47 = Iris.Button({"Tamper AK47"})
+                            if ak47Tampered == false and TamperAK47.clicked() then
+                                ak47Tampered = true
+                                tamperGun("AK47")
+                            end
+                        end
+                    end
+                end
+                Iris.End()
             end
             Iris.End()
         end
