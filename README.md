@@ -1,4 +1,4 @@
-# Emden404Hub
+# EmdenHub
 A Script Hub for a game called Emden or something for my close friends that wanted it. I think the game is boring but whatever.
 
 Copy and paste this into your lua environment to load the script:
