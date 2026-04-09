@@ -1,7 +1,7 @@
 -- For clearing up underline spam in Visual Studio Code
 -- local getgenv, Iris, ESP, BetterLib, Get, FormatSemVer, makefolder, CEHGF, EXECUTOR_FILING_FUNCTIONS, EXECUTOR_FILING_ENABLED, FormatHours, CountList, deepCopy, ConfigLibrary, CancelLerpTeleport, LerpTeleport, Lerp, GetDurationFromDistance, writefile, isfile, readfile, listfiles
 
-local SCRIPT_NAME = "Emden404Hub"
+local SCRIPT_NAME = "EmdenHub"
 local SCRIPT_VERSION = {
     -- Semantic Versioning
     Major = 1;
@@ -15,20 +15,20 @@ if not BetterLib then
     local OldGet = game.HttpGet or game.HttpGetAsync or nil
     assert(OldGet, "No HttpGet function found.")
     -- Load BetterLib first (if it's not already loaded), since every other loaded stuff will depend on it. If BetterLib fails to load, everything else won't work, but at least the error will be more informative.
-    loadstring(OldGet(game, "https://raw.githubusercontent.com/Brycki404/BetterLib/refs/heads/main/main.lua", true))()
+    loadstring(OldGet(game, "https://raw.githubusercontent.com/CatOnEdge/BetterLib/refs/heads/main/main.lua", true))()
 end
 -- Begin Script:
 
 -- Load Dependencies:
 
 if not Iris then
-    local IrisLoaderUrl = "https://raw.githubusercontent.com/Brycki404/Iris/refs/heads/main/loader.lua"
+    local IrisLoaderUrl = "https://raw.githubusercontent.com/CatOnEdge/Iris/refs/heads/main/loader.lua"
     genv.Iris = loadstring(Get(IrisLoaderUrl))()
 end
 
 if not ESP then
-    local ESP404LibUrl = "https://raw.githubusercontent.com/Brycki404/ESP404Lib/refs/heads/main/main.lua"
-    genv.ESP = loadstring(Get(ESP404LibUrl))()
+    local ESPLibUrl = "https://raw.githubusercontent.com/CatOnEdge/ESPLib/refs/heads/main/main.lua"
+    genv.ESP = loadstring(Get(ESPLibUrl))()
 end
 
 -- Loaded Dependencies!
